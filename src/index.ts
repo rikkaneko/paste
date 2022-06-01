@@ -85,8 +85,14 @@ export default {
         if (path === "/") {
             switch (method) {
                 // Fetch the HTML for uploading text/file
-                case "GET":
-                    return await fetch(PASTE_INDEX_HTML_URL);
+                case "GET": {
+                    return await fetch(PASTE_INDEX_HTML_URL).then(value => {
+                        let res = new Response(value.body, value);
+                        // Add the correct content-type to response header
+                        res.headers.set("Content-Type", "text/html; charset=UTF-8")
+                        return res;
+                    })
+                }
 
                 // Create new paste
                 case "POST":
