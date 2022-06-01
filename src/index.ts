@@ -1,8 +1,28 @@
+/*
+ * This file is part of paste.
+ * Copyright (c) 2022 Joe Ma <rikkaneko23@gmail.com>
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
 import {AwsClient} from "aws4fetch";
 import { customAlphabet } from 'nanoid'
 
 // Constants
-const SERVICE_URL = "https://paste.nekoul.com"
+const SERVICE_URL = "paste.nekoul.com"
+const PASTE_INDEX_HTML_URL = "https://raw.githubusercontent.com/rikkaneko/paste/main/paste.html"
+const UUID_LENGTH = 4
 
 export interface Env {
     PASTE_INDEX: KVNamespace;
@@ -11,30 +31,37 @@ export interface Env {
     ENDPOINT: string
 }
 
-const API_DOCS =
-    `Paste service https://paste.nekoul.com
+const API_SPEC_TEXT =
+    `Paste service https://${SERVICE_URL}
 
-[API Draft]
-GET /                Fetch the HTML for uploading text/file [ ]
-GET /<uuid>          Fetch the paste by uuid [x]
-GET /<uuid>/<lang>   Fetch the paste (code) in rendered HTML with syntax highlighting [ ]
-GET /<uuid>/settings   Fetch the paste information [x]
-GET /status          Fetch service information [x]
-PUT /                Create new paste [x]
-POST /<uuid>         Update the paste by uuid [x]
-DELETE /<uuid>       Delete paste by uuid [x]
-POST /<uuid>/settings  Update paste setting, i.e., passcode and valid time [ ]
+[API Specification]
+GET /                   Fetch the Web frontpage for uploading text/file [x]
+GET /api                Fetch API specification
+GET /<uuid>             Fetch the paste by uuid [x]
+GET /<uuid>/<lang>      Fetch the paste (code) in rendered HTML with syntax highlighting [ ]
+GET /<uuid>/settings    Fetch the paste information [x]
+GET /<uuid>/download    Download the paste [x]
+POST /                  Create new paste [x] # Only support multipart/form-data and raw data
+DELETE /<uuid>          Delete paste by uuid [x]
+POST /<uuid>/settings   Update paste setting, i.e., passcode and valid time [ ]
+
+* uuid: [A-z0-9]{${UUID_LENGTH}}
+* option: Render language
+
+Features
+* Password protection [ ]
+* Expiring paste [ ]
 
 [ ] indicated not implemented
 
 Limitation
 * Max. 10MB file size upload (Max. 100MB body size for free Cloudflare plan) 
 
-Last update on 30 May.
+Last update on 2 June.
 `;
 
 const gen_id = customAlphabet(
-    "1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz", 8);
+    "1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz", UUID_LENGTH);
 
 export default {
     async fetch(
@@ -50,24 +77,60 @@ export default {
             secretAccessKey: env.AWS_SECRET_ACCESS_KEY
         });
 
-        // if (hostname !== SERVICE_URL) {
-        //     // Invalid case
-        //     return new Response(null, { status: 403 })
-        // }
+        // Special path
+        if (path === "/api" && method == "GET") {
+            return new Response(API_SPEC_TEXT);
+        }
 
         if (path === "/") {
             switch (method) {
                 // Fetch the HTML for uploading text/file
                 case "GET":
-                    return new Response(API_DOCS);
+                    return await fetch(PASTE_INDEX_HTML_URL);
 
                 // Create new paste
-                case "PUT":
+                case "POST":
                     let uuid = gen_id();
-                    let buffer = await request.arrayBuffer();
+                    let buffer: ArrayBuffer;
+                    let title: string | undefined;
+                    // Handle content-type
+                    const content_type = headers.get("content-type") || "";
+                    // Content-Type: multipart/form-data
+                    if (content_type.includes("form")) {
+                        let formdata = await request.formData();
+                        let data = formdata.get("upload-content");
+                        if (data === null) {
+                            return new Response("Invalid request.\n", {
+                                status: 422
+                            })
+                        }
+                        // File
+                        if (data instanceof File) {
+                            title = data.name ?? undefined;
+                            buffer = await data.arrayBuffer();
+                        // Text
+                        } else {
+                            buffer = new TextEncoder().encode(data)
+                        }
+
+                    // Raw body
+                    } else {
+                        title = headers.get("title") ?? undefined;
+                        buffer = await request.arrayBuffer();
+                    }
+
                     // Check request.body size <= 10MB
                     if (buffer.byteLength > 10485760) {
-                        return new Response("File size must be under 10MB.\n");
+                        return new Response("Paste size must be under 10MB.\n", {
+                            status: 422
+                        });
+                    }
+
+                    // Check request.body size not empty
+                    if (buffer.byteLength == 0) {
+                        return new Response("Paste cannot be empty.\n", {
+                            status: 422
+                        });
                     }
 
                     let res = await s3.fetch(`${env.ENDPOINT}/${uuid}`, {
@@ -78,10 +141,8 @@ export default {
                     if (res.ok) {
                         // Upload success
                         let descriptor: PasteIndexEntry = {
-                            title: headers.get("title") || undefined,
-                            last_modified: Date.now(),
-                            password: undefined,
-                            editable: undefined // Default: true
+                            title: title ?? undefined,
+                            last_modified: Date.now()
                         };
 
                         let counter = await env.PASTE_INDEX.get("__count__") || "0";
@@ -96,7 +157,7 @@ export default {
 
             }
 
-        } else if (path.length >= 9) {
+        } else if (path.length >= UUID_LENGTH + 1) {
             // RegExpr to match /<uuid>/<option>
             const found = path.match("/(?<uuid>[A-z0-9]+)(?:/(?<option>[A-z]+))?$");
             if (found === null) {
@@ -106,8 +167,8 @@ export default {
             }
             // @ts-ignore
             const {uuid, option} = found.groups;
-            // UUID format: [A-z0-9]{8}
-            if (uuid.length !== 8) {
+            // UUID format: [A-z0-9]{UUID_LENGTH}
+            if (uuid.length !== UUID_LENGTH) {
                 return new Response("Invalid UUID.\n", {
                     status: 422
                 })
@@ -121,24 +182,20 @@ export default {
             let descriptor: PasteIndexEntry = JSON.parse(val);
 
             // Handling /<uuid>/settings
-            if (option !== undefined) {
-                if (option === "settings") {
-                    switch(method) {
-                        case "GET":
-                            return new Response(get_paste_info(uuid, descriptor))
+            if (option === "settings") {
+                switch(method) {
+                    case "GET":
+                        return new Response(get_paste_info(uuid, descriptor));
 
-                        case "POST": {
-
-                        }
+                    case "POST": {
+                        // TODO Implement paste setting update
+                        return new Response("Service is under maintainance.\n", {
+                            status: 422
+                        });
                     }
-
-                } else if (option.length !== 0) {
-                    return new Response("Unsupported language.\n", {
-                        status: 405
-                    })
                 }
-            }
 
+            }
 
             switch (method) {
                 // Fetch the paste by uuid
@@ -156,46 +213,24 @@ export default {
                     }
                     // Streaming request
                     res.body.pipeTo(writable);
-                    return new Response(readable, {
-                        // headers: {
-                        //     "Content-Disposition": `attachment; filename="${encodeURIComponent(descriptor.title ?? uuid)}"`
-                        // }
-                    });
-                }
 
-                // Update the paste by uuid
-                case "POST": {
-                    if (!descriptor.editable) {
-                        return new Response("This paste does not allow editing.\n", {
-                            status: 405
+                    // Handle response format
+                    // Direct download
+                    if (option === "download") {
+                        return new Response(readable, {
+                            headers: {
+                                "Content-Disposition": `attachment; filename="${encodeURIComponent(descriptor.title ?? uuid)}"`
+                            }
                         });
                     }
 
-                    let buffer = await request.arrayBuffer();
-                    // Check request.body size <= 10MB
-                    if (buffer.byteLength > 10485760) {
-                        return new Response("File size must be under 10MB.\n");
-                    }
-                    let res = await s3.fetch(`${env.ENDPOINT}/${uuid}`, {
-                        method: "PUT",
-                        body: buffer
-                    });
-
-                    if (res.ok) {
-                        // Update last modified time
-                        descriptor.last_modified = Date.now();
-                        await env.PASTE_INDEX.put(uuid, JSON.stringify(descriptor));
-                        return new Response("OK\n");
-                    } else {
-                        return new Response("Unable to update the paste.\n", {
-                            status: 500
-                        });
-                    }
+                    // Default format
+                    return new Response(readable);
                 }
 
                 // Delete paste by uuid
                 case "DELETE": {
-                    if (descriptor.editable !== undefined && descriptor.editable) {
+                    if (descriptor.editable !== undefined && !descriptor.editable) {
                         return new Response("This paste is immutable.\n", {
                             status: 405
                         });
@@ -228,7 +263,7 @@ export default {
 
 function get_paste_info(uuid: string, descriptor: PasteIndexEntry): string {
     let date = new Date(descriptor.last_modified)
-    return `${SERVICE_URL}/${uuid}
+    return `https://${SERVICE_URL}/${uuid}
 ID: ${uuid}
 Title: ${descriptor.title || "<empty>"}
 Password: ${(!!descriptor.password)}
@@ -241,5 +276,5 @@ interface PasteIndexEntry {
     title?: string
     last_modified: number,
     password?: string
-    editable?: boolean
+    editable?: boolean // Default: True
 }

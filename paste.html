@@ -1,0 +1,69 @@
+<!--
+  ~ This file is part of paste.
+  ~ Copyright (c) 2022 Joe Ma <rikkaneko23@gmail.com>
+  ~
+  ~ This program is free software: you can redistribute it and/or modify
+  ~ it under the terms of the GNU Lesser General Public License as published by
+  ~ the Free Software Foundation, either version 3 of the License, or
+  ~ (at your option) any later version.
+  ~
+  ~ This program is distributed in the hope that it will be useful,
+  ~ but WITHOUT ANY WARRANTY; without even the implied warranty of
+  ~ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  ~ GNU General Public License for more details.
+  ~
+  ~ You should have received a copy of the GNU Lesser General Public License
+  ~ along with this program.  If not, see <https://www.gnu.org/licenses/>.
+  -->
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Paste</title>
+</head>
+
+<body>
+<h3>Paste service - <a href="https://paste.nekoul.com">paste.nekoul.com</a></h3>
+<a href="https://nekoul.com">[Homepage]</a><a href="https://paste.nekoul.com/api">[API]</a>
+<h4>Upload file</h4>
+<form action="https://paste.nekoul.com" method="POST" enctype=multipart/form-data>
+    <div>
+        <input id="upload_file" type="file" name="upload-content">
+        <div><input type="submit" value="Send">   (<span id="file_size">0 byte</span>)</div>
+    </div>
+</form>
+<script>
+    function update_file_size() {
+        let bytes = this.files[0]?.size ?? 0;
+        let size = bytes + " bytes";
+        const units = ["KiB", "MiB", "GiB", "TiB"];
+        for (let i = 0, approx = bytes / 1024; approx > 1; approx /= 1024, i++) {
+            size = approx.toFixed(3) + " " + units[i];
+        }
+        document.getElementById("file_size").innerHTML = size;
+        document.getElementById("file_title").innerText = `"${this.files[0]?.name ?? ""}"`
+    }
+    
+    document.getElementById("upload_file").addEventListener("change", update_file_size, false);
+</script>
+
+<h4>Upload text</h4>
+<form action="https://paste.nekoul.com" method="POST" enctype=multipart/form-data>
+    <div>
+        <textarea id="text_input" style="width: 30%; max-width: 100%; " rows ="5" cols="50"
+                  name="upload-content" placeholder="Paste your text here..."></textarea>
+        <div><input type="submit" value="Send"></div>
+    </div>
+</form>
+<script>
+    function update_textarea() {
+        this.style.height = "auto"
+        this.style.height = this.scrollHeight + "px";
+    }
+    
+    document.getElementById("text_input").addEventListener("input", update_textarea, false);
+</script>
+<br><p>&copy; 2022 rikkaneko</p>
+</body>
+</html>
