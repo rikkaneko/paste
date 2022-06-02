@@ -89,7 +89,9 @@ export default {
                     return await fetch(PASTE_INDEX_HTML_URL).then(value => {
                         let res = new Response(value.body, value);
                         // Add the correct content-type to response header
-                        res.headers.set("Content-Type", "text/html; charset=UTF-8")
+                        res.headers.set("content-type", "text/html; charset=UTF-8");
+                        // Remove the default CSP header
+                        res.headers.delete("content-security-policy");
                         return res;
                     })
                 }
@@ -168,7 +170,7 @@ export default {
             const found = path.match("/(?<uuid>[A-z0-9]+)(?:/(?<option>[A-z]+))?$");
             if (found === null) {
                 return new Response("Invalid path.\n", {
-                    status: 422
+                    status: 403
                 })
             }
             // @ts-ignore
@@ -176,7 +178,7 @@ export default {
             // UUID format: [A-z0-9]{UUID_LENGTH}
             if (uuid.length !== UUID_LENGTH) {
                 return new Response("Invalid UUID.\n", {
-                    status: 422
+                    status: 442
                 })
             }
             let val = await env.PASTE_INDEX.get(uuid);

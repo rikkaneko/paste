@@ -42,7 +42,6 @@
             size = approx.toFixed(3) + " " + units[i];
         }
         document.getElementById("file_size").innerHTML = size;
-        document.getElementById("file_title").innerText = `"${this.files[0]?.name ?? ""}"`
     }
     
     document.getElementById("upload_file").addEventListener("change", update_file_size, false);
