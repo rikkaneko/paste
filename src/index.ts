@@ -17,7 +17,8 @@
  */
 
 import {AwsClient} from "aws4fetch";
-import { customAlphabet } from 'nanoid'
+import {customAlphabet} from "nanoid";
+import {contentType} from "mime-types"
 
 // Constants
 const SERVICE_URL = "paste.nekoul.com"
@@ -93,7 +94,7 @@ export default {
                     }).then(value => {
                         let res = new Response(value.body, value);
                         // Add the correct content-type to response header
-                        res.headers.set("content-type", "text/html; charset=UTF-8");
+                        res.headers.set("content-type", "text/html; charset=UTF-8;");
                         // Remove the default CSP header
                         res.headers.delete("content-security-policy");
                         return res;
@@ -102,15 +103,16 @@ export default {
 
                 // Create new paste
                 case "POST":
-                    let uuid = gen_id();
+                    const uuid = gen_id();
                     let buffer: ArrayBuffer;
                     let title: string | undefined;
                     // Handle content-type
                     const content_type = headers.get("content-type") || "";
+                    let mime: string | undefined;
                     // Content-Type: multipart/form-data
                     if (content_type.includes("form")) {
-                        let formdata = await request.formData();
-                        let data = formdata.get("upload-content");
+                        const formdata = await request.formData();
+                        const data = formdata.get("u");
                         if (data === null) {
                             return new Response("Invalid request.\n", {
                                 status: 422
@@ -120,14 +122,20 @@ export default {
                         if (data instanceof File) {
                             title = data.name ?? undefined;
                             buffer = await data.arrayBuffer();
+                            mime = data.type;
                         // Text
                         } else {
                             buffer = new TextEncoder().encode(data)
+                            mime = "text/plain; charset=UTF-8;"
                         }
 
                     // Raw body
                     } else {
-                        title = headers.get("title") ?? undefined;
+                        if (headers.has("title")) {
+                            title = headers.get("title")!;
+                            mime = contentType(title) || undefined;
+                        }
+                        mime = headers.get("content-type") ?? mime;
                         buffer = await request.arrayBuffer();
                     }
 
@@ -145,19 +153,20 @@ export default {
                         });
                     }
 
-                    let res = await s3.fetch(`${env.ENDPOINT}/${uuid}`, {
+                    const res = await s3.fetch(`${env.ENDPOINT}/${uuid}`, {
                         method: "PUT",
                         body: buffer
                     });
 
                     if (res.ok) {
                         // Upload success
-                        let descriptor: PasteIndexEntry = {
+                        const descriptor: PasteIndexEntry = {
                             title: title ?? undefined,
+                            mime_type: mime,
                             last_modified: Date.now()
                         };
 
-                        let counter = await env.PASTE_INDEX.get("__count__") || "0";
+                        const counter = await env.PASTE_INDEX.get("__count__") || "0";
                         await env.PASTE_INDEX.put(uuid, JSON.stringify(descriptor));
                         await env.PASTE_INDEX.put("__count__", (Number(counter) + 1).toString());
                         return new Response(get_paste_info(uuid, descriptor));
@@ -185,13 +194,13 @@ export default {
                     status: 442
                 })
             }
-            let val = await env.PASTE_INDEX.get(uuid);
+            const val = await env.PASTE_INDEX.get(uuid);
             if (val === null) {
                 return new Response("Paste not found.\n", {
                     status: 404
                 });
             }
-            let descriptor: PasteIndexEntry = JSON.parse(val);
+            const descriptor: PasteIndexEntry = JSON.parse(val);
 
             // Handling /<uuid>/settings
             if (option === "settings") {
@@ -223,12 +232,6 @@ export default {
                         });
 
                         res = new Response(origin.body, origin);
-                        // Remove x-amz-* headers
-                        for (let [key, value] of res.headers.entries()) {
-                            if (key.startsWith("x-amz")) {
-                                res.headers.delete(key);
-                            }
-                        }
 
                         if (!res.ok) {
                             // UUID exists in index but not found in remote object storage service
@@ -237,10 +240,18 @@ export default {
                             });
                         }
 
-                        res.headers.append("Cache-Control", "max-age=3600");
+                        // Remove x-amz-* headers
+                        for (let [key, value] of res.headers.entries()) {
+                            if (key.startsWith("x-amz")) {
+                                res.headers.delete(key);
+                            }
+                        }
+
+                        res.headers.set("cache-control", "public, max-age=18000");
+                        res.headers.set("content-type", descriptor.mime_type ?? "application/octet-stream");
 
                         if (option === "download") {
-                            res.headers.append("Content-Disposition",
+                            res.headers.set("content-disposition",
                                 `attachment; filename="${encodeURIComponent(descriptor.title ?? uuid)}"`);
                         }
 
@@ -267,7 +278,7 @@ export default {
 
                     if (res.ok) {
                         await env.PASTE_INDEX.delete(uuid);
-                        let counter = await env.PASTE_INDEX.get("__count__") || "1";
+                        const counter = await env.PASTE_INDEX.get("__count__") || "1";
                         await env.PASTE_INDEX.put("__count__", (Number(counter) - 1).toString());
 
                         // Invalidate CF cache
@@ -291,18 +302,20 @@ export default {
 };
 
 function get_paste_info(uuid: string, descriptor: PasteIndexEntry): string {
-    let date = new Date(descriptor.last_modified)
+    const date = new Date(descriptor.last_modified)
     return `https://${SERVICE_URL}/${uuid}
-ID: ${uuid}
-Title: ${descriptor.title || "<empty>"}
-Password: ${(!!descriptor.password)}
-Editable: ${descriptor.editable? descriptor.editable: true}
-Last modified at ${date.toISOString()}
+id: ${uuid}
+title: ${descriptor.title || "<empty>"}
+mime-type: ${descriptor.mime_type ?? "application/octet-stream"}
+password: ${(!!descriptor.password)}
+editable: ${descriptor.editable? descriptor.editable: true}
+last modified at ${date.toISOString()}
 `
 }
 
 interface PasteIndexEntry {
-    title?: string
+    title?: string,
+    mime_type?: string,
     last_modified: number,
     password?: string
     editable?: boolean // Default: True
