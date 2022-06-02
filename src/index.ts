@@ -86,7 +86,11 @@ export default {
             switch (method) {
                 // Fetch the HTML for uploading text/file
                 case "GET": {
-                    return await fetch(PASTE_INDEX_HTML_URL).then(value => {
+                    return await fetch(PASTE_INDEX_HTML_URL, {
+                        cf: {
+                            cacheEverything: true
+                        }
+                    }).then(value => {
                         let res = new Response(value.body, value);
                         // Add the correct content-type to response header
                         res.headers.set("content-type", "text/html; charset=UTF-8");
@@ -208,32 +212,45 @@ export default {
             switch (method) {
                 // Fetch the paste by uuid
                 case "GET": {
-                    let res = await s3.fetch(`${env.ENDPOINT}/${uuid}`, {
-                        method: "GET"
-                    });
-                    // Stream request
-                    let {readable, writable} = new TransformStream();
-                    if (res.body === null) {
-                        // UUID exists in index but not found in remote object storage service
-                        return new Response("Internal server error.\n", {
-                            status: 500
+                    // Enable CF cache for authorized request
+                    let cache = caches.default;
+                    // Match in existing cache
+                    let res = await cache.match(request.url);
+                    if (res === undefined) {
+                        // Fetch form origin if not hit cache
+                        let origin = await s3.fetch(`${env.ENDPOINT}/${uuid}`, {
+                            method: "GET"
                         });
-                    }
-                    // Streaming request
-                    res.body.pipeTo(writable);
 
-                    // Handle response format
-                    // Direct download
-                    if (option === "download") {
-                        return new Response(readable, {
-                            headers: {
-                                "Content-Disposition": `attachment; filename="${encodeURIComponent(descriptor.title ?? uuid)}"`
+                        res = new Response(origin.body, origin);
+                        // Remove x-amz-* headers
+                        for (let [key, value] of res.headers.entries()) {
+                            if (key.startsWith("x-amz")) {
+                                res.headers.delete(key);
                             }
-                        });
+                        }
+
+                        if (!res.ok) {
+                            // UUID exists in index but not found in remote object storage service
+                            return new Response("Internal server error.\n", {
+                                status: 500
+                            });
+                        }
+
+                        res.headers.append("Cache-Control", "max-age=3600");
+
+                        if (option === "download") {
+                            res.headers.append("Content-Disposition",
+                                `attachment; filename="${encodeURIComponent(descriptor.title ?? uuid)}"`);
+                        }
+
+                        // res.body cannot be read twice
+                        await cache.put(request.url, res.clone());
+                        return res;
                     }
 
-                    // Default format
-                    return new Response(readable);
+                    // Cache hit
+                    return res;
                 }
 
                 // Delete paste by uuid
@@ -252,6 +269,10 @@ export default {
                         await env.PASTE_INDEX.delete(uuid);
                         let counter = await env.PASTE_INDEX.get("__count__") || "1";
                         await env.PASTE_INDEX.put("__count__", (Number(counter) - 1).toString());
+
+                        // Invalidate CF cache
+                        let cache = caches.default;
+                        await cache.delete(request.url);
                         return new Response("OK\n");
                     } else {
                         return new Response("Unable to process such request.\n", {
