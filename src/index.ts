@@ -120,9 +120,11 @@ export default {
                         }
                         // File
                         if (data instanceof File) {
-                            title = data.name ?? undefined;
+                            if (data.name) {
+                                title = data.name;
+                                mime = contentType(title) || undefined;
+                            }
                             buffer = await data.arrayBuffer();
-                            mime = data.type;
                         // Text
                         } else {
                             buffer = new TextEncoder().encode(data)
