@@ -74,12 +74,31 @@ export default {
         const {pathname} = new URL(url);
         const path = pathname.replace(/\/+$/, "") || "/";
         let cache = caches.default;
+        // Bypass script to get cached response faster
+        {
+            if (method == "GET") {
+                let cached = await cache.match(url);
+                if (cached !== undefined) {
+                    let {readable, writable} = new TransformStream();
+                    cached.body!.pipeTo(writable);
+                    return new Response(readable, cached);
+                }
+            }
+
+        }
+
         const s3 = new AwsClient({
             accessKeyId: env.AWS_ACCESS_KEY_ID,
             secretAccessKey: env.AWS_SECRET_ACCESS_KEY
         });
 
         // Special path
+        if (path === "/favicon.ico" && method == "GET") {
+            return new Response(null, {
+                status: 404
+            })
+        }
+
         if (path === "/api" && method == "GET") {
             return new Response(API_SPEC_TEXT);
         }
@@ -169,11 +188,10 @@ export default {
                             last_modified: Date.now()
                         };
 
-                        const p1 = env.PASTE_INDEX.get("__count__").then(counter => {
+                        ctx.waitUntil(env.PASTE_INDEX.get("__count__").then(counter => {
                             env.PASTE_INDEX.put("__count__", (Number(counter ?? "0") + 1).toString());
-                        });
-                        const p2 = env.PASTE_INDEX.put(uuid, JSON.stringify(descriptor));
-                        await Promise.all([p1, p2]);
+                        }));
+                        ctx.waitUntil(env.PASTE_INDEX.put(uuid, JSON.stringify(descriptor)));
                         return new Response(get_paste_info(uuid, descriptor));
                     } else {
                         return new Response("Unable to upload the paste.\n", {
@@ -260,7 +278,8 @@ export default {
                         }
 
                         // res.body cannot be read twice
-                        await cache.put(request.url, res.clone());
+                        // Do not block when writing to cache
+                        ctx.waitUntil(cache.put(url, res.clone()));
                         return res;
                     }
 
@@ -283,12 +302,13 @@ export default {
                     });
 
                     if (res.ok) {
-                        await env.PASTE_INDEX.delete(uuid);
-                        const counter = await env.PASTE_INDEX.get("__count__") || "1";
-                        await env.PASTE_INDEX.put("__count__", (Number(counter) - 1).toString());
+                        ctx.waitUntil(env.PASTE_INDEX.delete(uuid));
+                        ctx.waitUntil(env.PASTE_INDEX.get("__count__").then(counter => {
+                            env.PASTE_INDEX.put("__count__", (Number(counter ?? "1") - 1).toString())
+                        }));
 
                         // Invalidate CF cache
-                        await cache.delete(request.url);
+                        ctx.waitUntil(cache.delete(url));
                         return new Response("OK\n");
                     } else {
                         return new Response("Unable to process such request.\n", {
