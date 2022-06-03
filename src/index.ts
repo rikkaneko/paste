@@ -216,9 +216,6 @@ export default {
                             mime_type
                         };
 
-                        ctx.waitUntil(env.PASTE_INDEX.get("__count__").then(counter => {
-                            env.PASTE_INDEX.put("__count__", (Number(counter ?? "0") + 1).toString());
-                        }));
                         ctx.waitUntil(env.PASTE_INDEX.put(uuid, JSON.stringify(descriptor)));
                         return new Response(get_paste_info(uuid, descriptor));
                     } else {
@@ -389,10 +386,6 @@ export default {
 
                     if (res.ok) {
                         ctx.waitUntil(env.PASTE_INDEX.delete(uuid));
-                        ctx.waitUntil(env.PASTE_INDEX.get("__count__").then(counter => {
-                            env.PASTE_INDEX.put("__count__", (Number(counter ?? "1") - 1).toString())
-                        }));
-
                         // Invalidate CF cache
                         ctx.waitUntil(cache.delete(url));
                         return new Response("OK\n");
