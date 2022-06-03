@@ -271,6 +271,8 @@ export default {
 
                         res.headers.set("cache-control", "public, max-age=18000");
                         res.headers.set("content-type", descriptor.mime_type ?? "application/octet-stream");
+                        res.headers.set("content-disposition",
+                            `inline; filename="${encodeURIComponent(descriptor.title ?? uuid)}"`);
 
                         if (option === "download") {
                             res.headers.set("content-disposition",
