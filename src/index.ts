@@ -18,10 +18,10 @@
 
 import {AwsClient} from "aws4fetch";
 import {customAlphabet} from "nanoid";
-import {contentType} from "mime-types"
+import {contentType} from "mime-types";
 
 // Constants
-const SERVICE_URL = "paste.nekoul.com"
+const SERVICE_URL = "pb.nekoul.com"
 const PASTE_INDEX_HTML_URL = "https://raw.githubusercontent.com/rikkaneko/paste/main/paste.html"
 const UUID_LENGTH = 4
 
@@ -71,8 +71,9 @@ export default {
         ctx: ExecutionContext
     ): Promise<Response> {
         const {url, method, headers} = request;
-        const {hostname, pathname, searchParams} = new URL(url);
-        const path = pathname.replace(/\/+$/, "") || "/"
+        const {pathname} = new URL(url);
+        const path = pathname.replace(/\/+$/, "") || "/";
+        let cache = caches.default;
         const s3 = new AwsClient({
             accessKeyId: env.AWS_ACCESS_KEY_ID,
             secretAccessKey: env.AWS_SECRET_ACCESS_KEY
@@ -168,9 +169,11 @@ export default {
                             last_modified: Date.now()
                         };
 
-                        const counter = await env.PASTE_INDEX.get("__count__") || "0";
-                        await env.PASTE_INDEX.put(uuid, JSON.stringify(descriptor));
-                        await env.PASTE_INDEX.put("__count__", (Number(counter) + 1).toString());
+                        const p1 = env.PASTE_INDEX.get("__count__").then(counter => {
+                            env.PASTE_INDEX.put("__count__", (Number(counter ?? "0") + 1).toString());
+                        });
+                        const p2 = env.PASTE_INDEX.put(uuid, JSON.stringify(descriptor));
+                        await Promise.all([p1, p2]);
                         return new Response(get_paste_info(uuid, descriptor));
                     } else {
                         return new Response("Unable to upload the paste.\n", {
@@ -224,7 +227,6 @@ export default {
                 // Fetch the paste by uuid
                 case "GET": {
                     // Enable CF cache for authorized request
-                    let cache = caches.default;
                     // Match in existing cache
                     let res = await cache.match(request.url);
                     if (res === undefined) {
@@ -263,7 +265,9 @@ export default {
                     }
 
                     // Cache hit
-                    return res;
+                    let { readable, writable } = new TransformStream();
+                    res.body!.pipeTo(writable);
+                    return new Response(readable, res);
                 }
 
                 // Delete paste by uuid
@@ -284,7 +288,6 @@ export default {
                         await env.PASTE_INDEX.put("__count__", (Number(counter) - 1).toString());
 
                         // Invalidate CF cache
-                        let cache = caches.default;
                         await cache.delete(request.url);
                         return new Response("OK\n");
                     } else {
@@ -305,13 +308,13 @@ export default {
 
 function get_paste_info(uuid: string, descriptor: PasteIndexEntry): string {
     const date = new Date(descriptor.last_modified)
-    return `https://${SERVICE_URL}/${uuid}
+    return `link: https://${SERVICE_URL}/${uuid}
 id: ${uuid}
 title: ${descriptor.title || "<empty>"}
 mime-type: ${descriptor.mime_type ?? "application/octet-stream"}
 password: ${(!!descriptor.password)}
 editable: ${descriptor.editable? descriptor.editable: true}
-last modified at ${date.toISOString()}
+created at ${date.toISOString()}
 `
 }
 

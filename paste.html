@@ -26,7 +26,7 @@
 <body>
 <h2>Paste Service</h2>
 <h4>Upload file</h4>
-<form action="https://paste.nekoul.com" method="POST" enctype=multipart/form-data>
+<form action="https://pb.nekoul.com" method="POST" enctype=multipart/form-data>
     <div>
         <input id="upload_file" type="file" name="u">
         <div><input type="submit" value="Send">   (<span id="file_size">0 byte</span>)</div>
@@ -47,7 +47,7 @@
 </script>
 
 <h4>Upload text</h4>
-<form action="https://paste.nekoul.com" method="POST" enctype=multipart/form-data>
+<form action="https://pb.nekoul.com" method="POST" enctype=multipart/form-data>
     <div>
         <textarea id="text_input" style="width: 30%; max-width: 100%; " rows ="5" cols="50"
                   name="u" placeholder="Paste your text here..."></textarea>
@@ -63,7 +63,7 @@
     document.getElementById("text_input").addEventListener("input", update_textarea, false);
 </script>
 <br>
-<a href="https://nekoul.com">[Homepage]</a><a href="https://paste.nekoul.com/api">[API]</a>
+<a href="https://nekoul.com">[Homepage]</a><a href="https://pb.nekoul.com/api">[API]</a>
 <p>&copy; 2022 rikkaneko</p>
 </body>
 </html>
