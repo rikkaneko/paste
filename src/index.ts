@@ -19,6 +19,7 @@
 import {AwsClient} from "aws4fetch";
 import {customAlphabet} from "nanoid";
 import {contentType} from "mime-types";
+import {sha256} from "js-sha256";
 
 // Constants
 const SERVICE_URL = "pb.nekoul.com"
@@ -74,18 +75,16 @@ export default {
         const {pathname} = new URL(url);
         const path = pathname.replace(/\/+$/, "") || "/";
         let cache = caches.default;
+        // Bypass script will also bypass (1) password authentication and (2) auto expire on access count
         // Bypass script to get cached response faster
-        {
-            if (method == "GET") {
-                let cached = await cache.match(url);
-                if (cached !== undefined) {
-                    let {readable, writable} = new TransformStream();
-                    cached.body!.pipeTo(writable);
-                    return new Response(readable, cached);
-                }
-            }
-
-        }
+        // if (method == "GET") {
+        //     let cached = await cache.match(url);
+        //     if (cached !== undefined) {
+        //         let {readable, writable} = new TransformStream();
+        //         cached.body!.pipeTo(writable);
+        //         return new Response(readable, cached);
+        //     }
+        // }
 
         const s3 = new AwsClient({
             accessKeyId: env.AWS_ACCESS_KEY_ID,
@@ -128,7 +127,9 @@ export default {
                     let title: string | undefined;
                     // Handle content-type
                     const content_type = headers.get("content-type") || "";
-                    let mime: string | undefined;
+                    let mime_type: string | undefined;
+                    let password: string | undefined;
+                    let max_access_count: number | undefined;
                     // Content-Type: multipart/form-data
                     if (content_type.includes("form")) {
                         const formdata = await request.formData();
@@ -142,23 +143,48 @@ export default {
                         if (data instanceof File) {
                             if (data.name) {
                                 title = data.name;
-                                mime = contentType(title) || undefined;
+                                mime_type = contentType(title) || undefined;
                             }
                             buffer = await data.arrayBuffer();
                         // Text
                         } else {
                             buffer = new TextEncoder().encode(data)
-                            mime = "text/plain; charset=UTF-8;"
+                            mime_type = "text/plain; charset=UTF-8;"
+                        }
+
+                        // Set password
+                        const pass = formdata.get("pass");
+                        if (typeof pass === "string") {
+                            password = pass;
+                        }
+
+                        const count = formdata.get("max-access-count");
+                        if (typeof count === "string" && !isNaN(+count)) {
+                            max_access_count = Number(count);
                         }
 
                     // Raw body
                     } else {
                         if (headers.has("title")) {
                             title = headers.get("title")!;
-                            mime = contentType(title) || undefined;
+                            mime_type = contentType(title) || undefined;
                         }
-                        mime = headers.get("content-type") ?? mime;
+                        mime_type = headers.get("content-type") ?? mime_type;
+                        password = headers.get("pass") ?? undefined;
+                        // Handle max-access-count:access_count_remain
+                        const count = headers.get("max-access-count") ?? undefined;
+                        if (count !== undefined && !isNaN(+count)) {
+                            max_access_count = Number(count);
+                        }
                         buffer = await request.arrayBuffer();
+                    }
+
+                    // Check password rules
+                    if (password && !check_password_rules(password)) {
+                        return new Response("Invalid password. " +
+                            "Password must contain alphabets and digits only, and has a length of 4 or more.", {
+                            status: 422
+                        })
                     }
 
                     // Check request.body size <= 10MB
@@ -184,8 +210,10 @@ export default {
                         // Upload success
                         const descriptor: PasteIndexEntry = {
                             title: title ?? undefined,
-                            mime_type: mime,
-                            last_modified: Date.now()
+                            last_modified: Date.now(),
+                            password: password? sha256(password).slice(0, 16): undefined,
+                            access_count_remain: max_access_count,
+                            mime_type
                         };
 
                         ctx.waitUntil(env.PASTE_INDEX.get("__count__").then(counter => {
@@ -244,6 +272,46 @@ export default {
             switch (method) {
                 // Fetch the paste by uuid
                 case "GET": {
+                    // Check password if needed
+                    if (descriptor.password !== undefined) {
+                        if (headers.has("Authorization")) {
+                            let cert = get_basic_auth(headers);
+                            // Error occurred when parsing the header
+                            if (cert === null) {
+                                return new Response("Invalid Authorization header.", {
+                                    status: 400
+                                })
+                            }
+                            // Check password and username should be empty
+                            if (cert[0].length != 0 || descriptor.password !== sha256(cert[1]).slice(0, 16)) {
+                                return new Response(null, {
+                                    status: 401,
+                                    headers: {
+                                        "WWW-Authenticate": "Basic realm=\"Requires password\""
+                                    }
+                                })
+                            }
+                        } else {
+                            return new Response(null, {
+                                status: 401,
+                                headers: {
+                                    "WWW-Authenticate": "Basic realm=\"Requires password\""
+                                }
+                            })
+                        }
+                    }
+
+                    // Check if access_count_remain entry present
+                    if (descriptor.access_count_remain !== undefined) {
+                        if (descriptor.access_count_remain <= 0) {
+                            return new Response("Paste expired.\n", {
+                                status: 410
+                            })
+                        }
+                        descriptor.access_count_remain--;
+                        ctx.waitUntil(env.PASTE_INDEX.put(uuid, JSON.stringify(descriptor)));
+                    }
+
                     // Enable CF cache for authorized request
                     // Match in existing cache
                     let res = await cache.match(request.url);
@@ -299,6 +367,22 @@ export default {
                         });
                     }
 
+                    // Check password if needed
+                    if (descriptor.password !== undefined) {
+                        if (headers.has("pass")) {
+                            const pass = headers.get("pass");
+                            if (descriptor.password !== sha256(pass!).slice(0, 16)) {
+                                return new Response("Incorrect password.\n", {
+                                    status: 403
+                                });
+                            }
+                        } else {
+                            return new Response("This operation requires password.\n", {
+                                status: 401
+                            })
+                        }
+                    }
+
                     let res = await s3.fetch(`${env.ENDPOINT}/${uuid}`, {
                         method: "DELETE"
                     });
@@ -336,8 +420,40 @@ title: ${descriptor.title || "<empty>"}
 mime-type: ${descriptor.mime_type ?? "application/octet-stream"}
 password: ${(!!descriptor.password)}
 editable: ${descriptor.editable? descriptor.editable: true}
+access count remain: ${descriptor.access_count_remain !== undefined? 
+        descriptor.access_count_remain? descriptor.access_count_remain: `0 (expired)`: "-"}
 created at ${date.toISOString()}
 `
+}
+
+function check_password_rules(password: string): boolean {
+    return password.match("^[A-z0-9]{4,}$") !== null;
+}
+
+// Extract username and password from Basic Authorization header
+function get_basic_auth(headers: Headers): [string, string] | null {
+    if (headers.has("Authorization")) {
+        const auth = headers.get("Authorization");
+        const [scheme, encoded] = auth!.split(" ");
+        // Validate authorization header format
+        if (!encoded || scheme !== "Basic") {
+            return null;
+        }
+        // Decode base64 to string (UTF-8)
+        const buffer = Uint8Array.from(atob(encoded), character => character.charCodeAt(0));
+        const decoded = new TextDecoder().decode(buffer).normalize();
+        const index = decoded.indexOf(':');
+
+        // Check if user & password are split by the first colon and MUST NOT contain control characters.
+        if (index === -1 || decoded.match("[\\0-\x1F\x7F]")) {
+            return null;
+        }
+
+        return [decoded.slice(0, index), decoded.slice(index + 1)];
+
+    } else {
+        return null;
+    }
 }
 
 interface PasteIndexEntry {
@@ -345,5 +461,6 @@ interface PasteIndexEntry {
     mime_type?: string,
     last_modified: number,
     password?: string
-    editable?: boolean // Default: True
+    editable?: boolean, // Default: True
+    access_count_remain?: number
 }
