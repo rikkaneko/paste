@@ -25,14 +25,39 @@
 
 <body>
 <h2>Paste Service</h2>
-<h4>Upload file</h4>
-<form action="https://pb.nekoul.com" method="POST" enctype=multipart/form-data>
+<form id="upload_file_form" action="https://pb.nekoul.com" method="POST" enctype=multipart/form-data>
     <div>
-        <input id="upload_file" type="file" name="u">
-        <div><input type="submit" value="Send">   (<span id="file_size">0 byte</span>)</div>
+        <h4>Upload file</h4>
+        <div><input id="upload_file" type="file" name="u"></div>
+        <div>
+            <h4>Upload text</h4>
+        <textarea id="text_input" style="width: 30%; max-width: 100%; " rows ="5" cols="50"
+                  name="u" placeholder="Paste your text here..." spellcheck="false"></textarea>
+        </div>
+        <h4>Settings</h4>
+        <div><label for="pass_input">Password: </label>
+            <input id="pass_input" type="password" name="pass">
+            <input id="show_pass_button" type="checkbox">
+            <label for="show_pass_button">Show</label>
+        </div>
+        <div>
+            <label for="read_limit_input">Read limit: </label>
+            <input id="read_limit_input" type="number" name="read-limit" min="1" style="width: 3em">
+        </div>
+        <br>
+        <div>
+            <input id="reset_button" type="reset" value="Reset">
+            <input id="sumbit_form_button" type="submit" value="Sumbit">   (<span id="file_size">0 bytes</span>)
+        </div>
     </div>
 </form>
+
 <script>
+    function update_textarea() {
+        this.style.height = "auto"
+        this.style.height = this.scrollHeight + "px";
+    }
+
     function update_file_size() {
         let bytes = this.files[0]?.size ?? 0;
         let size = bytes + " bytes";
@@ -43,24 +68,45 @@
         document.getElementById("file_size").innerHTML = size;
     }
     
-    document.getElementById("upload_file").addEventListener("change", update_file_size, false);
-</script>
-
-<h4>Upload text</h4>
-<form action="https://pb.nekoul.com" method="POST" enctype=multipart/form-data>
-    <div>
-        <textarea id="text_input" style="width: 30%; max-width: 100%; " rows ="5" cols="50"
-                  name="u" placeholder="Paste your text here..."></textarea>
-        <div><input type="submit" value="Send"></div>
-    </div>
-</form>
-<script>
-    function update_textarea() {
-        this.style.height = "auto"
-        this.style.height = this.scrollHeight + "px";
+    function toggle_password() {
+        let input_field = document.getElementById("pass_input");
+        if (this.checked) {
+            input_field.type = "text";
+        } else {
+            input_field.type = "password";
+        }
     }
     
+    function reset_form() {
+        // Re-enable all input elements
+        let elements = document.getElementById("upload_file_form").elements;
+        for (let i = 0; i < elements.length; i++) {
+            elements[i].disabled = false;
+        }
+        let size = document.getElementById("file_size");
+        size.innerHTML = "0 bytes";
+    }
+    
+    function handle_submit_form(event) {
+        let elements = this.elements;
+        let select_file = elements.namedItem("upload_file");
+        let text = elements.namedItem("text_input");
+        if (!!select_file.value.length ^ !!text.value.length) {
+            for (let i = 0; i < elements.length; i++) {
+                elements[i].disabled = elements[i].value.length === 0;
+            }
+        } else {
+            alert("You must either upload a file or upload text, but not bothor neither.");
+            // Prevent default submission
+            event.preventDefault();
+        }
+    }
+
+    document.getElementById("upload_file").addEventListener("input", update_file_size, false);
     document.getElementById("text_input").addEventListener("input", update_textarea, false);
+    document.getElementById("show_pass_button").addEventListener("change", toggle_password, false);
+    document.getElementById("reset_button").addEventListener("click", reset_form, false);
+    document.getElementById("upload_file_form").addEventListener("submit", handle_submit_form, false)
 </script>
 <br>
 <a href="https://nekoul.com">[Homepage]</a><a href="https://pb.nekoul.com/api">[API]</a>

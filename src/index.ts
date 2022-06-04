@@ -129,7 +129,7 @@ export default {
                     const content_type = headers.get("content-type") || "";
                     let mime_type: string | undefined;
                     let password: string | undefined;
-                    let max_access_count: number | undefined;
+                    let read_limit: number | undefined;
                     // Content-Type: multipart/form-data
                     if (content_type.includes("form")) {
                         const formdata = await request.formData();
@@ -155,26 +155,26 @@ export default {
                         // Set password
                         const pass = formdata.get("pass");
                         if (typeof pass === "string") {
-                            password = pass;
+                            password = pass || undefined;
                         }
 
-                        const count = formdata.get("max-access-count");
+                        const count = formdata.get("read-limit");
                         if (typeof count === "string" && !isNaN(+count)) {
-                            max_access_count = Number(count);
+                            read_limit = Number(count) || undefined;
                         }
 
                     // Raw body
                     } else {
                         if (headers.has("title")) {
-                            title = headers.get("title")!;
+                            title = headers.get("title") || "";
                             mime_type = contentType(title) || undefined;
                         }
-                        mime_type = headers.get("content-type") ?? mime_type;
-                        password = headers.get("pass") ?? undefined;
-                        // Handle max-access-count:access_count_remain
-                        const count = headers.get("max-access-count") ?? undefined;
+                        mime_type = headers.get("content-type") || mime_type;
+                        password = headers.get("pass") || undefined;
+                        // Handle read-limit:read_count_remain
+                        const count = headers.get("read-limit") || undefined;
                         if (count !== undefined && !isNaN(+count)) {
-                            max_access_count = Number(count);
+                            read_limit = Number(count) || undefined;
                         }
                         buffer = await request.arrayBuffer();
                     }
@@ -212,7 +212,7 @@ export default {
                             title: title ?? undefined,
                             last_modified: Date.now(),
                             password: password? sha256(password).slice(0, 16): undefined,
-                            access_count_remain: max_access_count,
+                            read_count_remain: read_limit,
                             mime_type
                         };
 
@@ -299,13 +299,13 @@ export default {
                     }
 
                     // Check if access_count_remain entry present
-                    if (descriptor.access_count_remain !== undefined) {
-                        if (descriptor.access_count_remain <= 0) {
+                    if (descriptor.read_count_remain !== undefined) {
+                        if (descriptor.read_count_remain <= 0) {
                             return new Response("Paste expired.\n", {
                                 status: 410
                             })
                         }
-                        descriptor.access_count_remain--;
+                        descriptor.read_count_remain--;
                         ctx.waitUntil(env.PASTE_INDEX.put(uuid, JSON.stringify(descriptor)));
                     }
 
@@ -413,8 +413,8 @@ title: ${descriptor.title || "<empty>"}
 mime-type: ${descriptor.mime_type ?? "application/octet-stream"}
 password: ${(!!descriptor.password)}
 editable: ${descriptor.editable? descriptor.editable: true}
-access count remain: ${descriptor.access_count_remain !== undefined? 
-        descriptor.access_count_remain? descriptor.access_count_remain: `0 (expired)`: "-"}
+remaining read count: ${descriptor.read_count_remain !== undefined? 
+        descriptor.read_count_remain? descriptor.read_count_remain: `0 (expired)`: "-"}
 created at ${date.toISOString()}
 `
 }
@@ -455,5 +455,5 @@ interface PasteIndexEntry {
     last_modified: number,
     password?: string
     editable?: boolean, // Default: True
-    access_count_remain?: number
+    read_count_remain?: number
 }
