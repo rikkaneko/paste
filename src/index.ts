@@ -62,7 +62,9 @@ POST /<uuid>/settings   Update paste setting, i.e., passcode and valid time [ ]
 # For paste with password protected, all API call related to the pastes requires additional x-pass header
 
 * uuid: [A-z0-9]{${UUID_LENGTH}}
-* option: Render language
+# Currently support two options
+# "download": Download paste as attachment
+# "raw": Display paste as plain text
 
 Features
 * Password protection [x]
@@ -357,7 +359,13 @@ export default {
                         }
 
                         res.headers.set("cache-control", "public, max-age=18000");
-                        res.headers.set("content-type", descriptor.mime_type ?? "application/octet-stream");
+                        // Alter content type to text/plain
+                        if (option === "raw") {
+                            res.headers.set("content-type", "text/plain; charset=UTF-8;");
+                        } else {
+                            res.headers.set("content-type", descriptor.mime_type ?? "application/octet-stream");
+                        }
+
                         res.headers.set("content-disposition",
                             `inline; filename="${encodeURIComponent(descriptor.title ?? uuid)}"`);
 
