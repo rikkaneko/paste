@@ -25,6 +25,17 @@
 
 <body>
 <h2>Paste Service</h2>
+<p>
+    <a href="https://pb.nekoul.com">pb.nekoul.com</a> is a pastebin-like service hosted on Cloudflare Worker.<br>
+    This service is primaryly designed for own usage and interest only.<br>
+    All data may be deleted or expired without any notification and guarantee. Please <b>DO NOT</b> abuse this service.<br>
+    The limit for file upload is <b>10 MB</b> and the paste will be kept for <b>180 days</b> only by default.<br>
+    The source code is available in my GitHub repository <a href="https://github.com/rikkaneko/paste">[here]</a>.<br>
+    This webpage is designed for upload files only.
+    For other operations like changing paste settings and deleting paste, please make use of the
+    <a href="https://pb.nekoul.com/api">API call</a> with <a href="https://wiki.archlinux.org/title/CURL">curl</a>.
+</p>
+
 <form id="upload_file_form" action="https://pb.nekoul.com" method="POST" enctype=multipart/form-data>
     <div>
         <h4>Upload file</h4>
@@ -92,6 +103,13 @@
         let select_file = elements.namedItem("upload_file");
         let text = elements.namedItem("text_input");
         if (!!select_file.value.length ^ !!text.value.length) {
+            // Check file size
+            const size = select_file.files[0]?.size ?? 0;
+            if (size <= 0 || size > 10485760) {
+                alert("Upload file size must not excess 10 MB.");
+                event.preventDefault();
+                return false;
+            }
             for (let i = 0; i < elements.length; i++) {
                 elements[i].disabled = elements[i].value.length === 0;
             }

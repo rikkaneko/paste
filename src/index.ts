@@ -39,25 +39,40 @@ const API_SPEC_TEXT =
 [API Specification]
 GET /                   Fetch the Web frontpage for uploading text/file [x]
 GET /api                Fetch API specification
+
+# Authentication support HTTP Basic access authentication (RFC 7617) or the x-pass header
 GET /<uuid>             Fetch the paste by uuid [x]
+
 GET /<uuid>/<lang>      Fetch the paste (code) in rendered HTML with syntax highlighting [ ]
 GET /<uuid>/settings    Fetch the paste information [x]
 GET /<uuid>/download    Download the paste [x]
-POST /                  Create new paste [x] # Only support multipart/form-data and raw data
+
+# Only support multipart/form-data and raw request
+# For form-data, u=<upload-data>, both title and content-type is deduced from the u
+# The following key is supported for both HTTP form request and headers
+# x-title: File title, i.e., 
+# content-type: The media type (MIME) of the data and encoding, i.e., text/plain; charset=UTF-8;
+# x-pass: Paste password
+# x-read-limit: Limit access times to paste to <read-limit>
+POST /                  Create new paste [x]
+
 DELETE /<uuid>          Delete paste by uuid [x]
 POST /<uuid>/settings   Update paste setting, i.e., passcode and valid time [ ]
+
+# For paste with password protected, all API call related to the pastes requires additional x-pass header
 
 * uuid: [A-z0-9]{${UUID_LENGTH}}
 * option: Render language
 
 Features
-* Password protection [ ]
+* Password protection [x]
 * Expiring paste [ ]
 
 [ ] indicated not implemented
 
 Limitation
-* Max. 10MB file size upload (Max. 100MB body size for free Cloudflare plan) 
+* Max. 10MB file size upload
+* Paste will be kept for 180 days only
 
 Last update on 2 June.
 `;
@@ -165,14 +180,14 @@ export default {
 
                     // Raw body
                     } else {
-                        if (headers.has("title")) {
-                            title = headers.get("title") || "";
+                        if (headers.has("x-title")) {
+                            title = headers.get("x-title") || "";
                             mime_type = contentType(title) || undefined;
                         }
                         mime_type = headers.get("content-type") || mime_type;
-                        password = headers.get("pass") || undefined;
+                        password = headers.get("x-pass") || undefined;
                         // Handle read-limit:read_count_remain
-                        const count = headers.get("read-limit") || undefined;
+                        const count = headers.get("x-read-limit") || undefined;
                         if (count !== undefined && !isNaN(+count)) {
                             read_limit = Number(count) || undefined;
                         }
@@ -188,7 +203,8 @@ export default {
                     }
 
                     // Check request.body size <= 10MB
-                    if (buffer.byteLength > 10485760) {
+                    const size = buffer.byteLength;
+                    if (size > 10485760) {
                         return new Response("Paste size must be under 10MB.\n", {
                             status: 422
                         });
@@ -212,6 +228,7 @@ export default {
                             title: title ?? undefined,
                             last_modified: Date.now(),
                             password: password? sha256(password).slice(0, 16): undefined,
+                            size,
                             read_count_remain: read_limit,
                             mime_type
                         };
@@ -277,24 +294,29 @@ export default {
                             if (cert === null) {
                                 return new Response("Invalid Authorization header.", {
                                     status: 400
-                                })
+                                });
                             }
                             // Check password and username should be empty
                             if (cert[0].length != 0 || descriptor.password !== sha256(cert[1]).slice(0, 16)) {
-                                return new Response(null, {
+                                return new Response("Incorrect password.\n", {
                                     status: 401,
                                     headers: {
                                         "WWW-Authenticate": "Basic realm=\"Requires password\""
                                     }
-                                })
+                                });
+                            }
+                        // x-pass header
+                        } else if (headers.has("x-pass")) {
+                            if (descriptor.password !== sha256(headers.get("x-pass")!).slice(0, 16)) {
+                                return new Response("Incorrect password.\n");
                             }
                         } else {
-                            return new Response(null, {
+                            return new Response("This paste requires password.\n", {
                                 status: 401,
                                 headers: {
                                     "WWW-Authenticate": "Basic realm=\"Requires password\""
                                 }
-                            })
+                            });
                         }
                     }
 
@@ -303,7 +325,7 @@ export default {
                         if (descriptor.read_count_remain <= 0) {
                             return new Response("Paste expired.\n", {
                                 status: 410
-                            })
+                            });
                         }
                         descriptor.read_count_remain--;
                         ctx.waitUntil(env.PASTE_INDEX.put(uuid, JSON.stringify(descriptor)));
@@ -411,6 +433,7 @@ function get_paste_info(uuid: string, descriptor: PasteIndexEntry): string {
 id: ${uuid}
 title: ${descriptor.title || "<empty>"}
 mime-type: ${descriptor.mime_type ?? "application/octet-stream"}
+size: ${descriptor.size} bytes (${to_human_readable_size(descriptor.size)})
 password: ${(!!descriptor.password)}
 editable: ${descriptor.editable? descriptor.editable: true}
 remaining read count: ${descriptor.read_count_remain !== undefined? 
@@ -449,11 +472,21 @@ function get_basic_auth(headers: Headers): [string, string] | null {
     }
 }
 
+function to_human_readable_size(bytes: number): string {
+    let size = bytes + " bytes";
+    const units = ["KiB", "MiB", "GiB", "TiB"];
+    for (let i = 0, approx = bytes / 1024; approx > 1; approx /= 1024, i++) {
+        size = approx.toFixed(3) + " " + units[i];
+    }
+    return size;
+}
+
 interface PasteIndexEntry {
     title?: string,
     mime_type?: string,
     last_modified: number,
-    password?: string
+    size: number,
+    password?: string,
     editable?: boolean, // Default: True
     read_count_remain?: number
 }
