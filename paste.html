@@ -27,9 +27,9 @@
 <h2>Paste Service</h2>
 <p>
     <a href="https://pb.nekoul.com">pb.nekoul.com</a> is a pastebin-like service hosted on Cloudflare Worker.<br>
-    This service is primaryly designed for own usage and interest only.<br>
+    This service is primarily designed for own usage and interest only.<br>
     All data may be deleted or expired without any notification and guarantee. Please <b>DO NOT</b> abuse this service.<br>
-    The limit for file upload is <b>10 MB</b> and the paste will be kept for <b>180 days</b> only by default.<br>
+    The limit for file upload is <b>10 MB</b> and the paste will be kept for <b>28 days</b> only by default.<br>
     The source code is available in my GitHub repository <a href="https://github.com/rikkaneko/paste">[here]</a>.<br>
     This webpage is designed for upload files only.
     For other operations like changing paste settings and deleting paste, please make use of the
@@ -38,15 +38,18 @@
 
 <form id="upload_file_form" action="https://pb.nekoul.com" method="POST" enctype=multipart/form-data>
     <div>
-        <h4>Upload file</h4>
-        <div><input id="upload_file" type="file" name="u"></div>
+        <div>
+            <h4>Upload file</h4>
+            <input id="upload_file" type="file" name="u" >
+        </div>
         <div>
             <h4>Upload text</h4>
         <textarea id="text_input" style="width: 30%; max-width: 100%; " rows ="5" cols="50"
-                  name="u" placeholder="Paste your text here..." spellcheck="false"></textarea>
+                  name="u" placeholder="" spellcheck="false"></textarea>
         </div>
-        <h4>Settings</h4>
-        <div><label for="pass_input">Password: </label>
+        <div>
+            <h4>Settings</h4>
+            <label for="pass_input">Password: </label>
             <input id="pass_input" type="password" name="pass">
             <input id="show_pass_button" type="checkbox">
             <label for="show_pass_button">Show</label>
