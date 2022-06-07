@@ -43,13 +43,15 @@ GET /api                Fetch API specification
 # Authentication support HTTP Basic access authentication (RFC 7617) or the x-pass header
 GET /<uuid>             Fetch the paste by uuid [x]
 
-GET /<uuid>/<lang>      Fetch the paste (code) in rendered HTML with syntax highlighting [ ]
-GET /<uuid>/settings    Fetch the paste information [x]
-GET /<uuid>/download    Download the paste [x]
+# Currently, only the following options is supported for <option>,
+# "settings": Fetch the paste information
+# "download": Download paste as attachment
+# "raw": Display paste as plain text
+GET /<uuid>/<option>      Fetch the paste (code) in rendered HTML with syntax highlighting [ ]
 
 # Only support multipart/form-data and raw request
 # For form-data, u=<upload-data>, both title and content-type is deduced from the u
-# The following key is supported for both HTTP form request and headers
+# The following key is supported for both HTTP form request and headers, prefix "x-" for header keys
 # x-title: File title, i.e., 
 # content-type: The media type (MIME) of the data and encoding, i.e., text/plain; charset=UTF-8;
 # x-pass: Paste password
@@ -62,9 +64,6 @@ POST /<uuid>/settings   Update paste setting, i.e., passcode and valid time [ ]
 # For paste with password protected, all API call related to the pastes requires additional x-pass header
 
 * uuid: [A-z0-9]{${UUID_LENGTH}}
-# Currently support two options
-# "download": Download paste as attachment
-# "raw": Display paste as plain text
 
 Features
 * Password protection [x]
@@ -76,7 +75,7 @@ Limitation
 * Max. 10MB file size upload
 * Paste will be kept for 180 days only
 
-Last update on 2 June.
+Last update on 7 June.
 `;
 
 const gen_id = customAlphabet(
@@ -92,16 +91,6 @@ export default {
         const {pathname} = new URL(url);
         const path = pathname.replace(/\/+$/, "") || "/";
         let cache = caches.default;
-        // Bypass script will also bypass (1) password authentication and (2) auto expire on access count
-        // Bypass script to get cached response faster
-        // if (method == "GET") {
-        //     let cached = await cache.match(url);
-        //     if (cached !== undefined) {
-        //         let {readable, writable} = new TransformStream();
-        //         cached.body!.pipeTo(writable);
-        //         return new Response(readable, cached);
-        //     }
-        // }
 
         const s3 = new AwsClient({
             accessKeyId: env.AWS_ACCESS_KEY_ID,
@@ -188,7 +177,6 @@ export default {
                         }
                         mime_type = headers.get("content-type") || mime_type;
                         password = headers.get("x-pass") || undefined;
-                        // Handle read-limit:read_count_remain
                         const count = headers.get("x-read-limit") || undefined;
                         if (count !== undefined && !isNaN(+count)) {
                             read_limit = Number(count) || undefined;
@@ -396,8 +384,8 @@ export default {
 
                     // Check password if needed
                     if (descriptor.password !== undefined) {
-                        if (headers.has("pass")) {
-                            const pass = headers.get("pass");
+                        if (headers.has("x-pass")) {
+                            const pass = headers.get("x-pass");
                             if (descriptor.password !== sha256(pass!).slice(0, 16)) {
                                 return new Response("Incorrect password.\n", {
                                     status: 403
