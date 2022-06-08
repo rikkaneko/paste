@@ -2,7 +2,7 @@
 This is a pastebin-like, simple file sharing application targeted to run on Cloudflare Worker.  
 [pb.nekoul.com](http://pb.nekoul.com) is the current deployment of this project.  
 The maximum upload file size is limited to **10 MB** and the paste will be kept for **28 days** only by default.  
-*All data may be deleted or expired without any notification and guarantee.*
+*All data may be deleted or expired without any notification and guarantee.*  
 Please **DO NOT** abuse this service.
 
 ## Supported features
@@ -76,7 +76,7 @@ Currently, only the following options is supported for `option`
 |`download`|Download paste as attachment|
 |`raw`|Display paste as plain text|
 
-*The authentication requirement is as same as `GET /\<uuid\>`.  *
+*The authentication requirement is as same as `GET /<uuid>`.*
 
 ### DELETE /\<uuid\>
 Delete paste by uuid. *If the password is set, this request requires additional `x-pass` header*
