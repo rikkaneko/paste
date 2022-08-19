@@ -99,6 +99,9 @@ export default {
     // Special path
     if (path === "/favicon.ico" && method == "GET") {
       return new Response(null, {
+        headers: {
+          "cache-control": "public, max-age=172800",
+        },
         status: 404
       })
     }
