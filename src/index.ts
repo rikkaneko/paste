@@ -16,24 +16,24 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import {AwsClient} from "aws4fetch";
-import {customAlphabet} from "nanoid";
-import {sha256} from "js-sha256";
+import {AwsClient} from 'aws4fetch';
+import {customAlphabet} from 'nanoid';
+import {sha256} from 'js-sha256';
 
 // Constants
-const SERVICE_URL = "pb.nekoul.com"
-const PASTE_INDEX_HTML_URL = "https://raw.githubusercontent.com/rikkaneko/paste/main/paste.html"
-const UUID_LENGTH = 4
+const SERVICE_URL = 'pb.nekoul.com';
+const PASTE_INDEX_HTML_URL = 'https://raw.githubusercontent.com/rikkaneko/paste/main/paste.html';
+const UUID_LENGTH = 4;
 
 export interface Env {
   PASTE_INDEX: KVNamespace;
   AWS_ACCESS_KEY_ID: string;
   AWS_SECRET_ACCESS_KEY: string;
-  ENDPOINT: string
+  ENDPOINT: string;
 }
 
 const API_SPEC_TEXT =
-`Paste service https://${SERVICE_URL}
+    `Paste service https://${SERVICE_URL}
 
 [API Specification]
 GET /                   Fetch the Web frontpage for uploading text/file [x]
@@ -78,74 +78,74 @@ Last update on 7 June.
 `;
 
 const gen_id = customAlphabet(
-    "1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz", UUID_LENGTH);
+    '1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz', UUID_LENGTH);
 
 export default {
   async fetch(
       request: Request,
       env: Env,
-      ctx: ExecutionContext
+      ctx: ExecutionContext,
   ): Promise<Response> {
     const {url, method, headers} = request;
     const {pathname} = new URL(url);
-    const path = pathname.replace(/\/+$/, "") || "/";
+    const path = pathname.replace(/\/+$/, '') || '/';
     let cache = caches.default;
 
     const s3 = new AwsClient({
       accessKeyId: env.AWS_ACCESS_KEY_ID,
-      secretAccessKey: env.AWS_SECRET_ACCESS_KEY
+      secretAccessKey: env.AWS_SECRET_ACCESS_KEY,
     });
 
     // Special path
-    if (path === "/favicon.ico" && method == "GET") {
+    if (path === '/favicon.ico' && method == 'GET') {
       return new Response(null, {
         headers: {
-          "cache-control": "public, max-age=172800",
+          'cache-control': 'public, max-age=172800',
         },
-        status: 404
-      })
+        status: 404,
+      });
     }
 
-    if (path === "/api" && method == "GET") {
+    if (path === '/api' && method == 'GET') {
       return new Response(API_SPEC_TEXT);
     }
 
-    if (path === "/") {
+    if (path === '/') {
       switch (method) {
           // Fetch the HTML for uploading text/file
-        case "GET": {
+        case 'GET': {
           return await fetch(PASTE_INDEX_HTML_URL, {
             cf: {
-              cacheEverything: true
-            }
+              cacheEverything: true,
+            },
           }).then(value => {
             let res = new Response(value.body, value);
             // Add the correct content-type to response header
-            res.headers.set("content-type", "text/html; charset=UTF-8;");
+            res.headers.set('content-type', 'text/html; charset=UTF-8;');
             // Remove the default CSP header
-            res.headers.delete("content-security-policy");
+            res.headers.delete('content-security-policy');
             return res;
-          })
+          });
         }
 
           // Create new paste
-        case "POST":
+        case 'POST':
           const uuid = gen_id();
           let buffer: ArrayBuffer;
           let title: string | undefined;
           // Handle content-type
-          const content_type = headers.get("content-type") || "";
+          const content_type = headers.get('content-type') || '';
           let mime_type: string | undefined;
           let password: string | undefined;
           let read_limit: number | undefined;
           // Content-Type: multipart/form-data
-          if (content_type.includes("form")) {
+          if (content_type.includes('form')) {
             const formdata = await request.formData();
-            const data = formdata.get("u");
+            const data = formdata.get('u');
             if (data === null) {
-              return new Response("Invalid request.\n", {
-                status: 422
-              })
+              return new Response('Invalid request.\n', {
+                status: 422,
+              });
             }
             // File
             if (data instanceof File) {
@@ -155,29 +155,29 @@ export default {
               buffer = await data.arrayBuffer();
               // Text
             } else {
-              buffer = new TextEncoder().encode(data)
-              mime_type = "text/plain; charset=UTF-8;"
+              buffer = new TextEncoder().encode(data);
+              mime_type = 'text/plain; charset=UTF-8;';
             }
 
             // Set password
-            const pass = formdata.get("pass");
-            if (typeof pass === "string") {
+            const pass = formdata.get('pass');
+            if (typeof pass === 'string') {
               password = pass || undefined;
             }
 
-            const count = formdata.get("read-limit");
-            if (typeof count === "string" && !isNaN(+count)) {
+            const count = formdata.get('read-limit');
+            if (typeof count === 'string' && !isNaN(+count)) {
               read_limit = Number(count) || undefined;
             }
 
             // Raw body
           } else {
-            if (headers.has("x-title")) {
-              title = headers.get("x-title") || "";
+            if (headers.has('x-title')) {
+              title = headers.get('x-title') || '';
             }
-            mime_type = headers.get("content-type") || mime_type;
-            password = headers.get("x-pass") || undefined;
-            const count = headers.get("x-read-limit") || undefined;
+            mime_type = headers.get('content-type') || mime_type;
+            password = headers.get('x-pass') || undefined;
+            const count = headers.get('x-read-limit') || undefined;
             if (count !== undefined && !isNaN(+count)) {
               read_limit = Number(count) || undefined;
             }
@@ -186,30 +186,30 @@ export default {
 
           // Check password rules
           if (password && !check_password_rules(password)) {
-            return new Response("Invalid password. " +
-                "Password must contain alphabets and digits only, and has a length of 4 or more.", {
-              status: 422
-            })
+            return new Response('Invalid password. ' +
+                'Password must contain alphabets and digits only, and has a length of 4 or more.', {
+              status: 422,
+            });
           }
 
           // Check request.body size <= 10MB
           const size = buffer.byteLength;
           if (size > 10485760) {
-            return new Response("Paste size must be under 10MB.\n", {
-              status: 422
+            return new Response('Paste size must be under 10MB.\n', {
+              status: 422,
             });
           }
 
           // Check request.body size not empty
           if (buffer.byteLength == 0) {
-            return new Response("Paste cannot be empty.\n", {
-              status: 422
+            return new Response('Paste cannot be empty.\n', {
+              status: 422,
             });
           }
 
           const res = await s3.fetch(`${env.ENDPOINT}/${uuid}`, {
-            method: "PUT",
-            body: buffer
+            method: 'PUT',
+            body: buffer,
           });
 
           if (res.ok) {
@@ -217,18 +217,18 @@ export default {
             const descriptor: PasteIndexEntry = {
               title: title ?? undefined,
               last_modified: Date.now(),
-              password: password? sha256(password).slice(0, 16): undefined,
+              password: password ? sha256(password).slice(0, 16) : undefined,
               size,
               read_count_remain: read_limit,
-              mime_type
+              mime_type,
             };
 
             // Key will be expired after 28 day if unmodified
             ctx.waitUntil(env.PASTE_INDEX.put(uuid, JSON.stringify(descriptor), {expirationTtl: 100800}));
             return new Response(get_paste_info(uuid, descriptor));
           } else {
-            return new Response("Unable to upload the paste.\n", {
-              status: 500
+            return new Response('Unable to upload the paste.\n', {
+              status: 500,
             });
           }
 
@@ -236,38 +236,38 @@ export default {
 
     } else if (path.length >= UUID_LENGTH + 1) {
       // RegExpr to match /<uuid>/<option>
-      const found = path.match("/(?<uuid>[A-z0-9]+)(?:/(?<option>[A-z]+))?$");
+      const found = path.match('/(?<uuid>[A-z0-9]+)(?:/(?<option>[A-z]+))?$');
       if (found === null) {
-        return new Response("Invalid path.\n", {
-          status: 403
-        })
+        return new Response('Invalid path.\n', {
+          status: 403,
+        });
       }
       // @ts-ignore
       const {uuid, option} = found.groups;
       // UUID format: [A-z0-9]{UUID_LENGTH}
       if (uuid.length !== UUID_LENGTH) {
-        return new Response("Invalid UUID.\n", {
-          status: 442
-        })
+        return new Response('Invalid UUID.\n', {
+          status: 442,
+        });
       }
       const val = await env.PASTE_INDEX.get(uuid);
       if (val === null) {
-        return new Response("Paste not found.\n", {
-          status: 404
+        return new Response('Paste not found.\n', {
+          status: 404,
         });
       }
       const descriptor: PasteIndexEntry = JSON.parse(val);
 
       // Handling /<uuid>/settings
-      if (option === "settings") {
-        switch(method) {
-          case "GET":
+      if (option === 'settings') {
+        switch (method) {
+          case 'GET':
             return new Response(get_paste_info(uuid, descriptor));
 
-          case "POST": {
+          case 'POST': {
             // TODO Implement paste setting update
-            return new Response("Service is under maintainance.\n", {
-              status: 422
+            return new Response('Service is under maintainance.\n', {
+              status: 422,
             });
           }
         }
@@ -276,37 +276,37 @@ export default {
 
       switch (method) {
           // Fetch the paste by uuid
-        case "GET": {
+        case 'GET': {
           // Check password if needed
           if (descriptor.password !== undefined) {
-            if (headers.has("Authorization")) {
+            if (headers.has('Authorization')) {
               let cert = get_basic_auth(headers);
               // Error occurred when parsing the header
               if (cert === null) {
-                return new Response("Invalid Authorization header.", {
-                  status: 400
+                return new Response('Invalid Authorization header.', {
+                  status: 400,
                 });
               }
               // Check password and username should be empty
               if (cert[0].length != 0 || descriptor.password !== sha256(cert[1]).slice(0, 16)) {
-                return new Response("Incorrect password.\n", {
+                return new Response('Incorrect password.\n', {
                   status: 401,
                   headers: {
-                    "WWW-Authenticate": "Basic realm=\"Requires password\""
-                  }
+                    'WWW-Authenticate': 'Basic realm="Requires password"',
+                  },
                 });
               }
               // x-pass header
-            } else if (headers.has("x-pass")) {
-              if (descriptor.password !== sha256(headers.get("x-pass")!).slice(0, 16)) {
-                return new Response("Incorrect password.\n");
+            } else if (headers.has('x-pass')) {
+              if (descriptor.password !== sha256(headers.get('x-pass')!).slice(0, 16)) {
+                return new Response('Incorrect password.\n');
               }
             } else {
-              return new Response("This paste requires password.\n", {
+              return new Response('This paste requires password.\n', {
                 status: 401,
                 headers: {
-                  "WWW-Authenticate": "Basic realm=\"Requires password\""
-                }
+                  'WWW-Authenticate': 'Basic realm="Requires password"',
+                },
               });
             }
           }
@@ -314,8 +314,8 @@ export default {
           // Check if access_count_remain entry present
           if (descriptor.read_count_remain !== undefined) {
             if (descriptor.read_count_remain <= 0) {
-              return new Response("Paste expired.\n", {
-                status: 410
+              return new Response('Paste expired.\n', {
+                status: 410,
               });
             }
             descriptor.read_count_remain--;
@@ -328,7 +328,7 @@ export default {
           if (res === undefined) {
             // Fetch form origin if not hit cache
             let origin = await s3.fetch(`${env.ENDPOINT}/${uuid}`, {
-              method: "GET"
+              method: 'GET',
             });
 
             res = new Response(origin.body, origin);
@@ -339,36 +339,36 @@ export default {
               ctx.waitUntil(env.PASTE_INDEX.delete(uuid));
               // Invalidate CF cache
               ctx.waitUntil(cache.delete(url));
-              return new Response("Paste expired.\n", {
-                status: 410
+              return new Response('Paste expired.\n', {
+                status: 410,
               });
             } else if (!res.ok) {
               // Other error
-              return new Response("Internal server error.\n", {
-                status: 500
+              return new Response('Internal server error.\n', {
+                status: 500,
               });
             }
 
             // Remove x-amz-* headers
             for (let [key, value] of res.headers.entries()) {
-              if (key.startsWith("x-amz")) {
+              if (key.startsWith('x-amz')) {
                 res.headers.delete(key);
               }
             }
 
-            res.headers.set("cache-control", "public, max-age=18000");
+            res.headers.set('cache-control', 'public, max-age=18000');
             // Alter content type to text/plain
-            if (option === "raw" || descriptor.mime_type === undefined) {
-              res.headers.delete("content-type");
+            if (option === 'raw' || descriptor.mime_type === undefined) {
+              res.headers.delete('content-type');
             } else {
-              res.headers.set("content-type", descriptor.mime_type);
+              res.headers.set('content-type', descriptor.mime_type);
             }
 
-            res.headers.set("content-disposition",
+            res.headers.set('content-disposition',
                 `inline; filename="${encodeURIComponent(descriptor.title ?? uuid)}"`);
 
-            if (option === "download") {
-              res.headers.set("content-disposition",
+            if (option === 'download') {
+              res.headers.set('content-disposition',
                   `attachment; filename="${encodeURIComponent(descriptor.title ?? uuid)}"`);
             }
 
@@ -379,47 +379,47 @@ export default {
           }
 
           // Cache hit
-          let { readable, writable } = new TransformStream();
+          let {readable, writable} = new TransformStream();
           res.body!.pipeTo(writable);
           return new Response(readable, res);
         }
 
           // Delete paste by uuid
-        case "DELETE": {
+        case 'DELETE': {
           if (descriptor.editable !== undefined && !descriptor.editable) {
-            return new Response("This paste is immutable.\n", {
-              status: 405
+            return new Response('This paste is immutable.\n', {
+              status: 405,
             });
           }
 
           // Check password if needed
           if (descriptor.password !== undefined) {
-            if (headers.has("x-pass")) {
-              const pass = headers.get("x-pass");
+            if (headers.has('x-pass')) {
+              const pass = headers.get('x-pass');
               if (descriptor.password !== sha256(pass!).slice(0, 16)) {
-                return new Response("Incorrect password.\n", {
-                  status: 403
+                return new Response('Incorrect password.\n', {
+                  status: 403,
                 });
               }
             } else {
-              return new Response("This operation requires password.\n", {
-                status: 401
-              })
+              return new Response('This operation requires password.\n', {
+                status: 401,
+              });
             }
           }
 
           let res = await s3.fetch(`${env.ENDPOINT}/${uuid}`, {
-            method: "DELETE"
+            method: 'DELETE',
           });
 
           if (res.ok) {
             ctx.waitUntil(env.PASTE_INDEX.delete(uuid));
             // Invalidate CF cache
             ctx.waitUntil(cache.delete(url));
-            return new Response("OK\n");
+            return new Response('OK\n');
           } else {
-            return new Response("Unable to process such request.\n", {
-              status: 500
+            return new Response('Unable to process such request.\n', {
+              status: 500,
             });
           }
         }
@@ -427,38 +427,38 @@ export default {
     }
 
     // Default response
-    return new Response("Invalid path.\n", {
-      status: 403
+    return new Response('Invalid path.\n', {
+      status: 403,
     });
   },
 };
 
 function get_paste_info(uuid: string, descriptor: PasteIndexEntry): string {
-  const date = new Date(descriptor.last_modified)
-  return`id: ${uuid}
+  const date = new Date(descriptor.last_modified);
+  return `id: ${uuid}
 link: https://${SERVICE_URL}/${uuid}
-title: ${descriptor.title || "<empty>"}
-mime-type: ${descriptor.mime_type ?? "-"}
+title: ${descriptor.title || '<empty>'}
+mime-type: ${descriptor.mime_type ?? '-'}
 size: ${descriptor.size} bytes (${to_human_readable_size(descriptor.size)})
 password: ${(!!descriptor.password)}
-editable: ${descriptor.editable? descriptor.editable: true}
-remaining read count: ${descriptor.read_count_remain !== undefined?
-      descriptor.read_count_remain? descriptor.read_count_remain: `0 (expired)`: "-"}
+editable: ${descriptor.editable ? descriptor.editable : true}
+remaining read count: ${descriptor.read_count_remain !== undefined ?
+      descriptor.read_count_remain ? descriptor.read_count_remain : `0 (expired)` : '-'}
 created at ${date.toISOString()}
-`
+`;
 }
 
 function check_password_rules(password: string): boolean {
-  return password.match("^[A-z0-9]{4,}$") !== null;
+  return password.match('^[A-z0-9]{4,}$') !== null;
 }
 
 // Extract username and password from Basic Authorization header
 function get_basic_auth(headers: Headers): [string, string] | null {
-  if (headers.has("Authorization")) {
-    const auth = headers.get("Authorization");
-    const [scheme, encoded] = auth!.split(" ");
+  if (headers.has('Authorization')) {
+    const auth = headers.get('Authorization');
+    const [scheme, encoded] = auth!.split(' ');
     // Validate authorization header format
-    if (!encoded || scheme !== "Basic") {
+    if (!encoded || scheme !== 'Basic') {
       return null;
     }
     // Decode base64 to string (UTF-8)
@@ -467,7 +467,7 @@ function get_basic_auth(headers: Headers): [string, string] | null {
     const index = decoded.indexOf(':');
 
     // Check if user & password are split by the first colon and MUST NOT contain control characters.
-    if (index === -1 || decoded.match("[\\0-\x1F\x7F]")) {
+    if (index === -1 || decoded.match('[\\0-\x1F\x7F]')) {
       return null;
     }
 
@@ -479,10 +479,10 @@ function get_basic_auth(headers: Headers): [string, string] | null {
 }
 
 function to_human_readable_size(bytes: number): string {
-  let size = bytes + " bytes";
-  const units = ["KiB", "MiB", "GiB", "TiB"];
+  let size = bytes + ' bytes';
+  const units = ['KiB', 'MiB', 'GiB', 'TiB'];
   for (let i = 0, approx = bytes / 1024; approx > 1; approx /= 1024, i++) {
-    size = approx.toFixed(3) + " " + units[i];
+    size = approx.toFixed(3) + ' ' + units[i];
   }
   return size;
 }
