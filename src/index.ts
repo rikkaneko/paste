@@ -224,7 +224,7 @@ export default {
             };
 
             // Key will be expired after 28 day if unmodified
-            ctx.waitUntil(env.PASTE_INDEX.put(uuid, JSON.stringify(descriptor), {expirationTtl: 100800}));
+            ctx.waitUntil(env.PASTE_INDEX.put(uuid, JSON.stringify(descriptor), {expirationTtl: 2419200}));
             return new Response(get_paste_info(uuid, descriptor));
           } else {
             return new Response('Unable to upload the paste.\n', {
@@ -319,7 +319,7 @@ export default {
               });
             }
             descriptor.read_count_remain--;
-            ctx.waitUntil(env.PASTE_INDEX.put(uuid, JSON.stringify(descriptor), {expirationTtl: 100800}));
+            ctx.waitUntil(env.PASTE_INDEX.put(uuid, JSON.stringify(descriptor), {expirationTtl: 2419200}));
           }
 
           // Enable CF cache for authorized request
