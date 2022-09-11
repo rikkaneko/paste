@@ -19,115 +19,120 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <title>Paste</title>
+  <meta charset="UTF-8">
+  <title>Paste</title>
 </head>
 
 <body>
 <h2>Paste Service</h2>
 <p>
-    <a href="https://pb.nekoul.com">pb.nekoul.com</a> is a pastebin-like service hosted on Cloudflare Worker.<br>
-    This service is primarily designed for own usage and interest only.<br>
-    All data may be deleted or expired without any notification and guarantee. Please <b>DO NOT</b> abuse this service.<br>
-        The limit for file upload is <b>10 MB</b> and the paste will be kept for <b>28 days</b> only by default.<br>
-    The source code is available in my GitHub repository <a href="https://github.com/rikkaneko/paste">[here]</a>.<br>
-    This webpage is designed for upload files only.
-    For other operations like changing paste settings and deleting paste, please make use of the
-    <a href="https://pb.nekoul.com/api">API call</a> with <a href="https://wiki.archlinux.org/title/CURL">curl</a>.
+  <a href="https://pb.nekoul.com">pb.nekoul.com</a> is a pastebin-like service hosted on Cloudflare Worker.<br>
+  This service is primarily designed for own usage and interest only.<br>
+  All data may be deleted or expired without any notification and guarantee. Please <b>DO NOT</b> abuse this
+  service.<br>
+  The limit for file upload is <b>10 MB</b> and the paste will be kept for <b>28 days</b> only by default.<br>
+  The source code is available in my GitHub repository <a href="https://github.com/rikkaneko/paste">[here]</a>.<br>
+  This webpage is designed for upload files only.
+  For other operations like changing paste settings and deleting paste, please make use of the
+  <a href="https://pb.nekoul.com/api">API call</a> with <a href="https://wiki.archlinux.org/title/CURL">curl</a>.
 </p>
 
 <form id="upload_file_form" action="https://pb.nekoul.com" method="POST" enctype=multipart/form-data>
+  <div>
     <div>
-        <div>
-            <h4>Upload file</h4>
-            <input id="upload_file" type="file" name="u" >
-        </div>
-        <div>
-            <h4>Upload text</h4>
-        <textarea id="text_input" style="width: 30%; max-width: 100%; " rows ="5" cols="50"
-                  name="u" placeholder="" spellcheck="false"></textarea>
-        </div>
-        <div>
-            <h4>Settings</h4>
-            <label for="pass_input">Password: </label>
-            <input id="pass_input" type="password" name="pass">
-            <input id="show_pass_button" type="checkbox">
-            <label for="show_pass_button">Show</label>
-        </div>
-        <div>
-            <label for="read_limit_input">Read limit: </label>
-            <input id="read_limit_input" type="number" name="read-limit" min="1" style="width: 3em">
-        </div>
-        <br>
-        <div>
-            <input id="reset_button" type="reset" value="Reset">
-            <input id="sumbit_form_button" type="submit" value="Sumbit">   (<span id="file_size">0 bytes</span>)
-        </div>
+      <h4>Upload file</h4>
+      <input id="upload_file" type="file" name="u">
     </div>
+    <div>
+      <h4>Upload text</h4>
+      <textarea id="text_input" style="width: 30%; max-width: 100%; " rows="5" cols="50"
+                name="u" placeholder="" spellcheck="false"></textarea>
+    </div>
+    <div>
+      <h4>Settings</h4>
+      <label for="pass_input">Password: </label>
+      <input id="pass_input" type="password" name="pass">
+      <input id="show_pass_button" type="checkbox">
+      <label for="show_pass_button">Show</label>
+    </div>
+    <div>
+      <label for="read_limit_input">Read limit: </label>
+      <input id="read_limit_input" type="number" name="read-limit" min="1" style="width: 3em">
+    </div>
+    <div>
+      <input id="show_qr_checkbox" type="checkbox" name="qrcode">
+      <label for="show_qr_checkbox">Show QR code on sumbitted</label>
+    </div>
+    <br>
+    <div>
+      <input id="reset_button" type="reset" value="Reset">
+      <input id="sumbit_form_button" type="submit" value="Sumbit"> (<span id="file_size">0 bytes</span>)
+    </div>
+  </div>
 </form>
 
 <script>
-    function update_textarea() {
-        this.style.height = "auto"
-        this.style.height = this.scrollHeight + "px";
-    }
+  function update_textarea() {
+    this.style.height = 'auto';
+    this.style.height = this.scrollHeight + 'px';
+  }
 
-    function update_file_size() {
-        let bytes = this.files[0]?.size ?? 0;
-        let size = bytes + " bytes";
-        const units = ["KiB", "MiB", "GiB", "TiB"];
-        for (let i = 0, approx = bytes / 1024; approx > 1; approx /= 1024, i++) {
-            size = approx.toFixed(3) + " " + units[i];
-        }
-        document.getElementById("file_size").innerHTML = size;
+  function update_file_size() {
+    let bytes = this.files[0]?.size ?? 0;
+    let size = bytes + ' bytes';
+    const units = ['KiB', 'MiB', 'GiB', 'TiB'];
+    for (let i = 0, approx = bytes / 1024; approx > 1; approx /= 1024, i++) {
+      size = approx.toFixed(3) + ' ' + units[i];
     }
-    
-    function toggle_password() {
-        let input_field = document.getElementById("pass_input");
-        if (this.checked) {
-            input_field.type = "text";
-        } else {
-            input_field.type = "password";
-        }
-    }
-    
-    function reset_form() {
-        // Re-enable all input elements
-        let elements = document.getElementById("upload_file_form").elements;
-        for (let i = 0; i < elements.length; i++) {
-            elements[i].disabled = false;
-        }
-        let size = document.getElementById("file_size");
-        size.innerHTML = "0 bytes";
-    }
-    
-    function handle_submit_form(event) {
-        let elements = this.elements;
-        let select_file = elements.namedItem("upload_file");
-        let text = elements.namedItem("text_input");
-        if (!!select_file.value.length ^ !!text.value.length) {
-            // Check file size
-            const size = select_file.files[0]?.size ?? 0;
-            if (size > 10485760) {
-                alert("Upload file size must not excess 10 MB.");
-                event.preventDefault();
-                return false;
-            }
-            for (let i = 0; i < elements.length; i++) {
-                elements[i].disabled = elements[i].value.length === 0;
-            }
-        } else {
-            alert("You must either upload a file or upload text, but not bothor neither.");
-            // Prevent default submission
-            event.preventDefault();
-        }
-    }
+    document.getElementById('file_size').innerHTML = size;
+  }
 
-    document.getElementById("upload_file").addEventListener("input", update_file_size, false);
-    document.getElementById("text_input").addEventListener("input", update_textarea, false);
-    document.getElementById("show_pass_button").addEventListener("change", toggle_password, false);
-    document.getElementById("reset_button").addEventListener("click", reset_form, false);
-    document.getElementById("upload_file_form").addEventListener("submit", handle_submit_form, false)
+  function toggle_password() {
+    let input_field = document.getElementById('pass_input');
+    if (this.checked) {
+      input_field.type = 'text';
+    } else {
+      input_field.type = 'password';
+    }
+  }
+
+  function reset_form() {
+    // Re-enable all input elements
+    let elements = document.getElementById('upload_file_form').elements;
+    for (let i = 0; i < elements.length; i++) {
+      elements[i].disabled = false;
+    }
+    let size = document.getElementById('file_size');
+    size.innerHTML = '0 bytes';
+  }
+
+  function handle_submit_form(event) {
+    let elements = this.elements;
+    let select_file = elements.namedItem('upload_file');
+    let text = elements.namedItem('text_input');
+    if (!!select_file.value.length ^ !!text.value.length) {
+      // Check file size
+      const size = select_file.files[0]?.size ?? 0;
+      if (size > 10485760) {
+        alert('Upload file size must not excess 10 MB.');
+        event.preventDefault();
+        return false;
+      }
+      for (let i = 0; i < elements.length; i++) {
+        elements[i].disabled = elements[i].value.length === 0;
+      }
+    } else {
+      alert('You must either upload a file or upload text, but not bothor neither.');
+      // Prevent default submission
+      event.preventDefault();
+    }
+  }
+
+  document.getElementById('upload_file').addEventListener('input', update_file_size, false);
+  document.getElementById('text_input').addEventListener('input', update_textarea, false);
+  document.getElementById('show_pass_button').addEventListener('change', toggle_password, false);
+  document.getElementById('reset_button').addEventListener('click', reset_form, false);
+  document.getElementById('upload_file_form').addEventListener('submit', handle_submit_form, false);
 </script>
 <br>
 <a href="https://nekoul.com">[Homepage]</a><a href="https://pb.nekoul.com/api">[API]</a>

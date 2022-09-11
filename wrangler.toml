@@ -6,6 +6,9 @@ workers_dev = false
 kv_namespaces = [
     { binding = "PASTE_INDEX", id = "a578863da0564cd7beadd9ce4a2d53e8", preview_id = "66d9440e13124099a5e508fe1ff0a489" }
 ]
+services = [
+    { binding = "QRCODE", service = "qrcode-gen", environment = "production" }
+]
 
 # [secret]
 # AWS_ACCESS_KEY_ID

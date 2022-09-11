@@ -19,6 +19,7 @@
 import {AwsClient} from 'aws4fetch';
 import {customAlphabet} from 'nanoid';
 import {sha256} from 'js-sha256';
+import dedent from 'dedent-js';
 
 // Constants
 const SERVICE_URL = 'pb.nekoul.com';
@@ -27,6 +28,7 @@ const UUID_LENGTH = 4;
 
 export interface Env {
   PASTE_INDEX: KVNamespace;
+  QRCODE: ServiceWorkerGlobalScope;
   AWS_ACCESS_KEY_ID: string;
   AWS_SECRET_ACCESS_KEY: string;
   ENDPOINT: string;
@@ -43,18 +45,19 @@ GET /api                Fetch API specification
 GET /<uuid>             Fetch the paste by uuid [x]
 
 # Currently, only the following options is supported for <option>,
-# "settings": Fetch the paste information
+# "settings": Fetch the paste information, add \`?qr=1\` to enable QR code generation for paste link.
 # "download": Download paste as attachment
 # "raw": Display paste as plain text
 GET /<uuid>/<option>      Fetch the paste (code) in rendered HTML with syntax highlighting [ ]
 
 # Only support multipart/form-data and raw request
 # For form-data, u=<upload-data>, both title and content-type is deduced from the u
-# The following key is supported for both HTTP form request and headers, prefix "x-" for header keys
-# x-title: File title, i.e., 
+# Add \`?qr=1\` or qrcode=(on|true) using form-data to enable QR code generation for paste link.
+# The following key is supported for both HTTP form request and headers, add the prefix "x-" for header keys in raw request
+# title: File title, i.e. main.py
 # content-type: The media type (MIME) of the data and encoding, i.e., text/plain; charset=UTF-8;
-# x-pass: Paste password
-# x-read-limit: Limit access times to paste to <read-limit>
+# pass: Paste password
+# read-limit: Limit access times to paste to <read-limit>
 POST /                  Create new paste [x]
 
 DELETE /<uuid>          Delete paste by uuid [x]
@@ -64,17 +67,18 @@ POST /<uuid>/settings   Update paste setting, i.e., passcode and valid time [ ]
 
 * uuid: [A-z0-9]{${UUID_LENGTH}}
 
-Features
-* Password protection [x]
-* Expiring paste [ ]
+Supported Features
+* Password protection
+* Limit access times
+* Generate QR code for paste link
 
 [ ] indicated not implemented
 
 Limitation
 * Max. 10MB file size upload
-* Paste will be kept for 180 days only
+* Paste will be kept for 28 days only by default
 
-Last update on 7 June.
+Last update on 11 Sept.
 `;
 
 const gen_id = customAlphabet(
@@ -87,7 +91,7 @@ export default {
       ctx: ExecutionContext,
   ): Promise<Response> {
     const {url, method, headers} = request;
-    const {pathname} = new URL(url);
+    const {pathname, searchParams} = new URL(url);
     const path = pathname.replace(/\/+$/, '') || '/';
     let cache = caches.default;
 
@@ -138,6 +142,7 @@ export default {
           let mime_type: string | undefined;
           let password: string | undefined;
           let read_limit: number | undefined;
+          let need_qrcode: boolean = false;
           // Content-Type: multipart/form-data
           if (content_type.includes('form')) {
             const formdata = await request.formData();
@@ -170,18 +175,29 @@ export default {
               read_limit = Number(count) || undefined;
             }
 
+            // Check if qrcode generation needed
+            const qr = formdata.get('qrcode');
+            if (typeof qr === 'string' && qr.toLowerCase() === 'true' || qr === 'on') {
+              need_qrcode = true;
+            }
+
             // Raw body
           } else {
             if (headers.has('x-title')) {
               title = headers.get('x-title') || '';
             }
-            mime_type = headers.get('content-type') || mime_type;
+            mime_type = headers.get('x-content-type') || mime_type;
             password = headers.get('x-pass') || undefined;
             const count = headers.get('x-read-limit') || undefined;
             if (count !== undefined && !isNaN(+count)) {
               read_limit = Number(count) || undefined;
             }
             buffer = await request.arrayBuffer();
+          }
+
+          // Check if qrcode generation needed
+          if (searchParams.get('qr') === '1') {
+            need_qrcode = true;
           }
 
           // Check password rules
@@ -225,7 +241,7 @@ export default {
 
             // Key will be expired after 28 day if unmodified
             ctx.waitUntil(env.PASTE_INDEX.put(uuid, JSON.stringify(descriptor), {expirationTtl: 100800}));
-            return new Response(get_paste_info(uuid, descriptor));
+            return new Response(await get_paste_info(uuid, descriptor, env, need_qrcode));
           } else {
             return new Response('Unable to upload the paste.\n', {
               status: 500,
@@ -261,8 +277,10 @@ export default {
       // Handling /<uuid>/settings
       if (option === 'settings') {
         switch (method) {
-          case 'GET':
-            return new Response(get_paste_info(uuid, descriptor));
+          case 'GET': {
+            const need_qrcode = searchParams.get('qr') === '1';
+            return new Response(await get_paste_info(uuid, descriptor, env, need_qrcode));
+          }
 
           case 'POST': {
             // TODO Implement paste setting update
@@ -433,19 +451,35 @@ export default {
   },
 };
 
-function get_paste_info(uuid: string, descriptor: PasteIndexEntry): string {
+async function get_paste_info(uuid: string, descriptor: PasteIndexEntry, env: Env, need_qr: boolean = false): Promise<string> {
   const date = new Date(descriptor.last_modified);
-  return `id: ${uuid}
-link: https://${SERVICE_URL}/${uuid}
-title: ${descriptor.title || '<empty>'}
-mime-type: ${descriptor.mime_type ?? '-'}
-size: ${descriptor.size} bytes (${to_human_readable_size(descriptor.size)})
-password: ${(!!descriptor.password)}
-editable: ${descriptor.editable ? descriptor.editable : true}
-remaining read count: ${descriptor.read_count_remain !== undefined ?
+  let content = dedent`
+    id: ${uuid}
+    link: https://${SERVICE_URL}/${uuid}
+    title: ${descriptor.title || '<empty>'}
+    mime-type: ${descriptor.mime_type ?? '-'}
+    size: ${descriptor.size} bytes (${to_human_readable_size(descriptor.size)})
+    password: ${(!!descriptor.password)}
+    editable: ${descriptor.editable ? descriptor.editable : true}
+    remaining read count: ${descriptor.read_count_remain !== undefined ?
       descriptor.read_count_remain ? descriptor.read_count_remain : `0 (expired)` : '-'}
-created at ${date.toISOString()}
-`;
+    created at ${date.toISOString()}
+    `;
+
+  if (need_qr) {
+    // Cloudflare currently does not support doing a subrequest to the same zone, use service binding instead
+    const res = await env.QRCODE.fetch('https://qrcode.nekoul.com?' + new URLSearchParams({
+      q: `https://${SERVICE_URL}/${uuid}`,
+    }));
+
+    if (res.ok) {
+      const qrcode = await res.text();
+      content += '\n';
+      content += qrcode;
+      content += '\n';
+    }
+  }
+  return content;
 }
 
 function check_password_rules(password: string): boolean {
