@@ -95,6 +95,10 @@ export default {
     const path = pathname.replace(/\/+$/, '') || '/';
     let cache = caches.default;
 
+    const agent = headers.get('user-agent') ?? '';
+    // Detect if request from browsers
+    const is_browser = ['Mozilla', 'AppleWebKit', 'Chrome', 'Safari', 'Gecko'].some(v => agent.includes(v));
+
     const s3 = new AwsClient({
       accessKeyId: env.AWS_ACCESS_KEY_ID,
       secretAccessKey: env.AWS_SECRET_ACCESS_KEY,
@@ -241,7 +245,7 @@ export default {
 
             // Key will be expired after 28 day if unmodified
             ctx.waitUntil(env.PASTE_INDEX.put(uuid, JSON.stringify(descriptor), {expirationTtl: 2419200}));
-            return new Response(await get_paste_info(uuid, descriptor, env, need_qrcode));
+            return await get_paste_info(uuid, descriptor, env, is_browser, need_qrcode);
           } else {
             return new Response('Unable to upload the paste.\n', {
               status: 500,
@@ -279,7 +283,7 @@ export default {
         switch (method) {
           case 'GET': {
             const need_qrcode = searchParams.get('qr') === '1';
-            return new Response(await get_paste_info(uuid, descriptor, env, need_qrcode));
+            return await get_paste_info(uuid, descriptor, env, is_browser, need_qrcode);
           }
 
           case 'POST': {
@@ -451,11 +455,12 @@ export default {
   },
 };
 
-async function get_paste_info(uuid: string, descriptor: PasteIndexEntry, env: Env, need_qr: boolean = false): Promise<string> {
+async function get_paste_info(uuid: string, descriptor: PasteIndexEntry, env: Env, use_html: boolean = true, need_qr: boolean = false): Promise<Response> {
   const date = new Date(descriptor.last_modified);
+  const link = `https://${SERVICE_URL}/${uuid}`;
   let content = dedent`
     id: ${uuid}
-    link: https://${SERVICE_URL}/${uuid}
+    link: ${link}
     title: ${descriptor.title || '<empty>'}
     mime-type: ${descriptor.mime_type ?? '-'}
     size: ${descriptor.size} bytes (${to_human_readable_size(descriptor.size)})
@@ -466,10 +471,37 @@ async function get_paste_info(uuid: string, descriptor: PasteIndexEntry, env: En
     created at ${date.toISOString()}
     `;
 
+  // Browser response
+  if (use_html) {
+    const html = dedent`
+      <!DOCTYPE html>
+        <html lang="en">
+        <head>
+          <meta charset="UTF-8">
+          <title>Paste</title>
+        </head>
+        <body>
+          <pre style="word-wrap: break-word; white-space: pre-wrap;
+            font-family: 'Fira Mono', monospace; font-size: 16px;">${content}</pre>
+          ${(need_qr) ? `<img src="${'https://qrcode.nekoul.com/?' + new URLSearchParams({q: link, type: 'svg'})}"
+            alt="${link}" style="max-width: 280px">` : ''} 
+        </body>
+      </html>
+    `;
+
+    return new Response(html, {
+      headers: {
+        'content-type': 'text/html; charset=UTF-8;',
+      },
+    });
+  }
+
+  // Console response
   if (need_qr) {
     // Cloudflare currently does not support doing a subrequest to the same zone, use service binding instead
     const res = await env.QRCODE.fetch('https://qrcode.nekoul.com?' + new URLSearchParams({
-      q: `https://${SERVICE_URL}/${uuid}`,
+      q: link,
+      type: 'utf8',
     }));
 
     if (res.ok) {
@@ -479,7 +511,8 @@ async function get_paste_info(uuid: string, descriptor: PasteIndexEntry, env: En
       content += '\n';
     }
   }
-  return content;
+
+  return new Response(content);
 }
 
 function check_password_rules(password: string): boolean {
