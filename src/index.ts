@@ -508,10 +508,10 @@ async function get_paste_info(uuid: string, descriptor: PasteIndexEntry, env: En
       const qrcode = await res.text();
       content += '\n';
       content += qrcode;
-      content += '\n';
     }
   }
 
+  content += '\n';
   return new Response(content);
 }
 

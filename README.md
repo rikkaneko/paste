@@ -75,7 +75,7 @@ Add `?qr=1` to enable QR code generation for paste link.
 
 |Header Key|Description|
 |-|-|
-|`content-type`|The media type (MIME) of the data and encoding|
+|`x-content-type`|The media type (MIME) of the data and encoding|
 |`x-title`|File's title|
 |`x-pass`|Paste's password|
 |`x-read-limit`|The maximum access count|
