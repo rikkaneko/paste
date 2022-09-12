@@ -158,9 +158,8 @@ export default {
             }
             // File
             if (data instanceof File) {
-              if (data.name) {
-                title = data.name;
-              }
+              title = data.name || undefined;
+              mime_type = data.type || undefined;
               buffer = await data.arrayBuffer();
               // Text
             } else {
@@ -175,8 +174,14 @@ export default {
             }
 
             const count = formdata.get('read-limit');
-            if (typeof count === 'string' && !isNaN(+count)) {
-              read_limit = Number(count) || undefined;
+            if (typeof count === 'string') {
+              const n = parseInt(count);
+              if (isNaN(n) || n <= 0) {
+                return new Response('Invalid read-limit field, must be a positive integer.\n', {
+                  status: 422,
+                });
+              }
+              read_limit = n;
             }
 
             // Check if qrcode generation needed
@@ -187,14 +192,18 @@ export default {
 
             // Raw body
           } else {
-            if (headers.has('x-title')) {
-              title = headers.get('x-title') || '';
-            }
-            mime_type = headers.get('x-content-type') || mime_type;
+            title = headers.get('x-title') || undefined;
+            mime_type = headers.get('x-content-type') || undefined;
             password = headers.get('x-pass') || undefined;
             const count = headers.get('x-read-limit') || undefined;
-            if (count !== undefined && !isNaN(+count)) {
-              read_limit = Number(count) || undefined;
+            if (typeof count === 'string') {
+              const n = parseInt(count);
+              if (isNaN(n) || n <= 0) {
+                return new Response('x-read-limit must be a positive integer.\n', {
+                  status: 422,
+                });
+              }
+              read_limit = n;
             }
             buffer = await request.arrayBuffer();
           }
@@ -235,12 +244,12 @@ export default {
           if (res.ok) {
             // Upload success
             const descriptor: PasteIndexEntry = {
-              title: title ?? undefined,
+              title: title || undefined,
               last_modified: Date.now(),
               password: password ? sha256(password).slice(0, 16) : undefined,
+              read_count_remain: read_limit ?? undefined,
+              mime_type: mime_type || undefined,
               size,
-              read_count_remain: read_limit,
-              mime_type,
             };
 
             // Key will be expired after 28 day if unmodified
@@ -341,7 +350,9 @@ export default {
               });
             }
             descriptor.read_count_remain--;
-            ctx.waitUntil(env.PASTE_INDEX.put(uuid, JSON.stringify(descriptor), {expirationTtl: 2419200}));
+            ctx.waitUntil(env.PASTE_INDEX.put(uuid, JSON.stringify(descriptor), {
+              expiration: descriptor.last_modified / 1000 + 2419200,
+            }));
           }
 
           // Enable CF cache for authorized request
@@ -492,6 +503,7 @@ async function get_paste_info(uuid: string, descriptor: PasteIndexEntry, env: En
     return new Response(html, {
       headers: {
         'content-type': 'text/html; charset=UTF-8;',
+        'cache-control': 'no-store',
       },
     });
   }
@@ -512,7 +524,11 @@ async function get_paste_info(uuid: string, descriptor: PasteIndexEntry, env: En
   }
 
   content += '\n';
-  return new Response(content);
+  return new Response(content, {
+    headers: {
+      'cache-control': 'no-store',
+    },
+  });
 }
 
 function check_password_rules(password: string): boolean {
