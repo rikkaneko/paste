@@ -148,7 +148,7 @@ export default {
           let read_limit: number | undefined;
           let need_qrcode: boolean = false;
           // Content-Type: multipart/form-data
-          if (content_type.includes('form')) {
+          if (content_type.includes('multipart/form-data')) {
             const formdata = await request.formData();
             const data = formdata.get('u');
             if (data === null) {
