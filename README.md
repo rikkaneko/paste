@@ -40,7 +40,54 @@ It is worth noting that Cloudflare Worker is run *before* the cache. Therefore, 
 |`ENDPOINT`|The gateway endpoint to the S3 service|
 
 (Compatible to any S3-compatible object storage)  
-**`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` and `ENDPOINT` should be kept secret, i.e., [put into the encrypted store](https://developers.cloudflare.com/workers/platform/environment-variables/#adding-secrets-via-wrangler).**
+**`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` and `ENDPOINT` should be kept secret,
+i.e., [put into the encrypted store](https://developers.cloudflare.com/workers/platform/environment-variables/#adding-secrets-via-wrangler)
+.**
+
+## Usage
+
+### **curl, wget or other command line tools**
+
+Upload a file (Raw body) with password enabled
+
+```sh
+$ curl --data-binary @example.txt -H "x-pass: exmaple1234" "https://pb.nekoul.com"
+```
+
+Upload a file (Formdata) with password enabled
+
+```shell
+$ curl -F @exmaple.txt -F "pass=example1234" "https://pb.nekoul.com"
+```
+
+Upload command ouput as paste
+
+```shell
+$ lspci -v | curl -F u=@- 'https://pb.nekoul.com'
+```
+
+Update a paste with QR code generation of paste link
+
+```shell
+$ echo "Hello, world!" | curl -F u=@- 'https://pb.nekoul.com?qr=1'
+```
+
+Get paste
+
+```shell
+$ curl https://pb.nekoul.com/uuid
+```
+
+Delete paste
+
+```shell
+$ curl -X DELETE https://pb.nekoul.com/uuid
+```
+
+### **Web**
+
+Use [pb.nekoul.com](https://pb.nekoul.com) to submit HTTP form, as same as `curl`.  
+This HTML form currenly only support paste upload.
 
 ## API Specification
 
