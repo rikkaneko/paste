@@ -97,7 +97,7 @@ export default {
 
     const agent = headers.get('user-agent') ?? '';
     // Detect if request from browsers
-    const is_browser = ['Mozilla', 'AppleWebKit', 'Chrome', 'Safari', 'Gecko'].some(v => agent.includes(v));
+    const is_browser = ['Chrome', 'Mozilla', 'AppleWebKit', 'Safari', 'Gecko', 'Chromium'].some(v => agent.includes(v));
 
     const s3 = new AwsClient({
       accessKeyId: env.AWS_ACCESS_KEY_ID,
