@@ -89,7 +89,7 @@
     for (let i = 0, approx = bytes / 1024; approx > 1; approx /= 1024, i++) {
       size = approx.toFixed(3) + ' ' + units[i];
     }
-    status.textContent = `${this.files[0]?.type ?? 'application/application/octet-stream'}, ${size}`;
+    status.textContent = `${this.files[0]?.type || 'application/octet-stream'}, ${size}`;
   }
 
   function toggle_password() {
