@@ -147,10 +147,12 @@ export default {
           let password: string | undefined;
           let read_limit: number | undefined;
           let need_qrcode: boolean = false;
+          let paste_type: string | undefined;
           // Content-Type: multipart/form-data
           if (content_type.includes('multipart/form-data')) {
             const formdata = await request.formData();
             const data = formdata.get('u');
+            const type = formdata.get('paste-type');
             if (data === null) {
               return new Response('Invalid request.\n', {
                 status: 422,
@@ -166,6 +168,8 @@ export default {
               buffer = new TextEncoder().encode(data);
               mime_type = 'text/plain; charset=UTF-8;';
             }
+
+            if (typeof type === 'string') paste_type = type;
 
             // Set password
             const pass = formdata.get('pass');
@@ -195,6 +199,7 @@ export default {
             title = headers.get('x-title') || undefined;
             mime_type = headers.get('x-content-type') || undefined;
             password = headers.get('x-pass') || undefined;
+            paste_type = headers.get('x-paste-type') || undefined;
             const count = headers.get('x-read-limit') || undefined;
             if (typeof count === 'string') {
               const n = parseInt(count);
@@ -211,6 +216,24 @@ export default {
           // Check if qrcode generation needed
           if (searchParams.get('qr') === '1') {
             need_qrcode = true;
+          }
+
+          // Validate paste type parameter
+          switch (paste_type) {
+            case 'link':
+              mime_type = 'text/x-uri';
+              paste_type = 'link';
+              break;
+
+            case 'paste':
+            case undefined:
+              paste_type = undefined;
+              break;
+
+            default:
+              return new Response('Unknown paste type.\n', {
+                status: 422,
+              });
           }
 
           // Check password rules
@@ -249,6 +272,7 @@ export default {
               password: password ? sha256(password).slice(0, 16) : undefined,
               read_count_remain: read_limit ?? undefined,
               mime_type: mime_type || undefined,
+              type: paste_type,
               size,
             };
 
@@ -390,19 +414,41 @@ export default {
             }
 
             res.headers.set('cache-control', 'public, max-age=18000');
-            // Alter content type to text/plain
-            if (option === 'raw' || descriptor.mime_type === undefined) {
-              res.headers.delete('content-type');
-            } else {
-              res.headers.set('content-type', descriptor.mime_type);
-            }
-
             res.headers.set('content-disposition',
                 `inline; filename="${encodeURIComponent(descriptor.title ?? uuid)}"`);
 
-            if (option === 'download') {
+            if (descriptor.mime_type)
+              res.headers.set('content-type', descriptor.mime_type);
+            // Let the browser guess the content
+            else res.headers.delete('content-type');
+
+            // Handle option
+            if (option === 'raw') res.headers.delete('content-type');
+            else if (option === 'download')
               res.headers.set('content-disposition',
                   `attachment; filename="${encodeURIComponent(descriptor.title ?? uuid)}"`);
+
+            // Link redirection
+            else if (descriptor.type === 'link' || option === 'link') {
+              const content = await res.clone().arrayBuffer();
+              try {
+                const href = new TextDecoder().decode(content);
+                new URL(href);
+                res.headers.set('location', href);
+                res = new Response(res.body, {
+                  status: 301,
+                  headers: {
+                    location: href,
+                    ...res.headers,
+                  },
+                });
+              } catch (err) {
+                if (err instanceof TypeError) {
+                  res = new Response('Invalid URL.', {
+                    status: 422,
+                  });
+                }
+              }
             }
 
             // res.body cannot be read twice
@@ -578,4 +624,5 @@ interface PasteIndexEntry {
   password?: string,
   editable?: boolean, // Default: True
   read_count_remain?: number
+  type?: string;
 }

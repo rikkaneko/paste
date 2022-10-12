@@ -1,7 +1,6 @@
 name = "paste"
 main = "src/index.ts"
 compatibility_date = "2022-05-30"
-node_compat = true
 workers_dev = false
 kv_namespaces = [
     { binding = "PASTE_INDEX", id = "a578863da0564cd7beadd9ce4a2d53e8", preview_id = "66d9440e13124099a5e508fe1ff0a489" }
