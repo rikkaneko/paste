@@ -18,6 +18,7 @@ Please **DO NOT** abuse this service.
 - [ ] Expiring paste (*not support directly, see [this section](#expiring-paste)*)
 - [ ] Render paste code with syntax highlighting
 - [x] Generate QR code for paste link
+- [x] Support URL redirection using [HTTP status codes 301](https://en.wikipedia.org/wiki/URL_redirection#HTTP_status_codes_3xx)
 
 ## Service architecture
 
@@ -117,6 +118,7 @@ Add `?qr=1` to enable QR code generation for paste link.
 |`pass`|Paste's password|
 |`read-limit`|The maximum access count|
 |`qrcode`|Toggle QR code generation|
+|`paste-type`|Set paste type|
 
 #### For raw request,
 
@@ -126,8 +128,16 @@ Add `?qr=1` to enable QR code generation for paste link.
 |`x-title`|File's title|
 |`x-pass`|Paste's password|
 |`x-read-limit`|The maximum access count|
+|`x-paste-type`|Set paste type|
 
 The request body contains the upload content.
+
+#### Paste type
+
+|Type|Description|
+|-|-|
+|`paste`|Normal paste content|
+|`link`|URL link to be redirected|
 
 ### GET /\<uuid\>/\<option\> (Not implemented)
 
@@ -139,6 +149,7 @@ Currently, only the following options is supported for `option`
 |`settings`|Fetch the paste information|
 |`download`|Download paste as attachment|
 |`raw`|Display paste as plain text|
+|`link`|Treat paste content as URL link|
 
 *The authentication requirement is as same as `GET /<uuid>`.*
 

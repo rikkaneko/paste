@@ -58,6 +58,7 @@ GET /<uuid>/<option>      Fetch the paste (code) in rendered HTML with syntax hi
 # content-type: The media type (MIME) of the data and encoding, i.e., text/plain; charset=UTF-8;
 # pass: Paste password
 # read-limit: Limit access times to paste to <read-limit>
+# paste-type: Set paste type (Available: paste, link)
 POST /                  Create new paste [x]
 
 DELETE /<uuid>          Delete paste by uuid [x]
