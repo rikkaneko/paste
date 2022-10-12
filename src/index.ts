@@ -116,7 +116,11 @@ export default {
     }
 
     if (path === '/api' && method == 'GET') {
-      return new Response(API_SPEC_TEXT);
+      return new Response(API_SPEC_TEXT, {
+        headers: {
+          'cache-control': 'public, max-age=172800',
+        },
+      });
     }
 
     if (path === '/') {
@@ -128,12 +132,13 @@ export default {
               cacheEverything: true,
             },
           }).then(value => {
-            let res = new Response(value.body, value);
-            // Add the correct content-type to response header
-            res.headers.set('content-type', 'text/html; charset=UTF-8;');
-            // Remove the default CSP header
-            res.headers.delete('content-security-policy');
-            return res;
+            return new Response(value.body, {
+              // Add the correct content-type to response header
+              headers: {
+                'content-type': 'text/html; charset=UTF-8;',
+                'cache-control': 'public, max-age=172800',
+              },
+            });
           });
         }
 
@@ -389,7 +394,7 @@ export default {
               method: 'GET',
             });
 
-            res = new Response(origin.body, origin);
+            res = new Response(origin.body);
 
             if (res.status == 404) {
               // UUID exists in index but not found in remote object storage service, probably expired
@@ -405,13 +410,6 @@ export default {
               return new Response('Internal server error.\n', {
                 status: 500,
               });
-            }
-
-            // Remove x-amz-* headers
-            for (let [key, value] of res.headers.entries()) {
-              if (key.startsWith('x-amz')) {
-                res.headers.delete(key);
-              }
             }
 
             res.headers.set('cache-control', 'public, max-age=18000');
