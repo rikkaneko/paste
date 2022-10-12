@@ -512,19 +512,21 @@ export default {
 };
 
 async function get_paste_info(uuid: string, descriptor: PasteIndexEntry, env: Env, use_html: boolean = true, need_qr: boolean = false): Promise<Response> {
-  const date = new Date(descriptor.last_modified);
+  const created = new Date(descriptor.last_modified);
+  const expired = new Date(descriptor.last_modified + 2419200000);
   const link = `https://${SERVICE_URL}/${uuid}`;
   let content = dedent`
     id: ${uuid}
     link: ${link}
-    title: ${descriptor.title || '<empty>'}
+    title: ${descriptor.title?.trim() || '-'}
     mime-type: ${descriptor.mime_type ?? '-'}
     size: ${descriptor.size} bytes (${to_human_readable_size(descriptor.size)})
     password: ${(!!descriptor.password)}
     editable: ${descriptor.editable ? descriptor.editable : true}
     remaining read count: ${descriptor.read_count_remain !== undefined ?
       descriptor.read_count_remain ? descriptor.read_count_remain : `0 (expired)` : '-'}
-    created at ${date.toISOString()}
+    created at ${created.toISOString()}
+    expired at ${expired.toISOString()}
     `;
 
   // Browser response
