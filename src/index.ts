@@ -34,54 +34,6 @@ export interface Env {
   ENDPOINT: string;
 }
 
-const API_SPEC_TEXT =
-    `Paste service https://${SERVICE_URL}
-
-[API Specification]
-GET /                   Fetch the Web frontpage for uploading text/file [x]
-GET /api                Fetch API specification
-
-# Authentication support HTTP Basic access authentication (RFC 7617) or the x-pass header
-GET /<uuid>             Fetch the paste by uuid [x]
-
-# Currently, only the following options is supported for <option>,
-# "settings": Fetch the paste information, add \`?qr=1\` to enable QR code generation for paste link.
-# "download": Download paste as attachment
-# "raw": Display paste as plain text
-GET /<uuid>/<option>      Fetch the paste (code) in rendered HTML with syntax highlighting [ ]
-
-# Only support multipart/form-data and raw request
-# For form-data, u=<upload-data>, both title and content-type is deduced from the u
-# Add \`?qr=1\` or qrcode=(on|true) using form-data to enable QR code generation for paste link.
-# The following key is supported for both HTTP form request and headers, add the prefix "x-" for header keys in raw request
-# title: File title, i.e. main.py
-# content-type: The media type (MIME) of the data and encoding, i.e., text/plain; charset=UTF-8;
-# pass: Paste password
-# read-limit: Limit access times to paste to <read-limit>
-# paste-type: Set paste type (Available: paste, link)
-POST /                  Create new paste [x]
-
-DELETE /<uuid>          Delete paste by uuid [x]
-POST /<uuid>/settings   Update paste setting, i.e., passcode and valid time [ ]
-
-# For paste with password protected, all API call related to the pastes requires additional x-pass header
-
-* uuid: [A-z0-9]{${UUID_LENGTH}}
-
-Supported Features
-* Password protection
-* Limit access times
-* Generate QR code for paste link
-
-[ ] indicated not implemented
-
-Limitation
-* Max. 10MB file size upload
-* Paste will be kept for 28 days only by default
-
-Last update on 11 Sept.
-`;
-
 const gen_id = customAlphabet(
     '1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz', UUID_LENGTH);
 
@@ -112,14 +64,6 @@ export default {
           'cache-control': 'public, max-age=172800',
         },
         status: 404,
-      });
-    }
-
-    if (path === '/api' && method == 'GET') {
-      return new Response(API_SPEC_TEXT, {
-        headers: {
-          'cache-control': 'public, max-age=172800',
-        },
       });
     }
 
@@ -159,6 +103,7 @@ export default {
             const formdata = await request.formData();
             const data = formdata.get('u');
             const type = formdata.get('paste-type');
+            const file_title = formdata.get('title');
             if (data === null) {
               return new Response('Invalid request.\n', {
                 status: 422,
@@ -175,6 +120,7 @@ export default {
               mime_type = 'text/plain; charset=UTF-8;';
             }
 
+            if (typeof file_title === 'string') title = file_title;
             if (typeof type === 'string') paste_type = type;
 
             // Set password
@@ -206,16 +152,15 @@ export default {
             mime_type = headers.get('x-content-type') || undefined;
             password = headers.get('x-pass') || undefined;
             paste_type = headers.get('x-paste-type') || undefined;
-            const count = headers.get('x-read-limit') || undefined;
-            if (typeof count === 'string') {
-              const n = parseInt(count);
-              if (isNaN(n) || n <= 0) {
-                return new Response('x-read-limit must be a positive integer.\n', {
-                  status: 422,
-                });
-              }
-              read_limit = n;
+            need_qrcode = headers.get('x-qr') === '1';
+            const count = headers.get('x-read-limit') || '';
+            const n = parseInt(count);
+            if (isNaN(n) || n <= 0) {
+              return new Response('x-read-limit must be a positive integer.\n', {
+                status: 422,
+              });
             }
+            read_limit = n;
             buffer = await request.arrayBuffer();
           }
 
@@ -241,6 +186,12 @@ export default {
                 status: 422,
               });
           }
+
+          // Check file title rules
+          if (title && /^.*[\\\/]/.test(title))
+            return new Response('Invalid title', {
+              status: 422,
+            });
 
           // Check password rules
           if (password && !check_password_rules(password)) {
@@ -321,7 +272,7 @@ export default {
       if (option === 'settings') {
         switch (method) {
           case 'GET': {
-            const need_qrcode = searchParams.get('qr') === '1';
+            const need_qrcode = searchParams.get('qr') === '1' || headers.get('x-qr') === '1';
             return await get_paste_info(uuid, descriptor, env, is_browser, need_qrcode);
           }
 
@@ -518,11 +469,11 @@ async function get_paste_info(uuid: string, descriptor: PasteIndexEntry, env: En
   let content = dedent`
     id: ${uuid}
     link: ${link}
+    type: ${descriptor.type}
     title: ${descriptor.title?.trim() || '-'}
     mime-type: ${descriptor.mime_type ?? '-'}
     size: ${descriptor.size} bytes (${to_human_readable_size(descriptor.size)})
     password: ${(!!descriptor.password)}
-    editable: ${descriptor.editable ? descriptor.editable : true}
     remaining read count: ${descriptor.read_count_remain !== undefined ?
       descriptor.read_count_remain ? descriptor.read_count_remain : `0 (expired)` : '-'}
     created at ${created.toISOString()}
@@ -623,7 +574,7 @@ interface PasteIndexEntry {
   last_modified: number,
   size: number,
   password?: string,
-  editable?: boolean, // Default: True
+  editable?: boolean, // Default: False (unsupported)
   read_count_remain?: number
   type?: string;
 }

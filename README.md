@@ -119,6 +119,7 @@ Add `?qr=1` to enable QR code generation for paste link.
 |`read-limit`|The maximum access count|
 |`qrcode`|Toggle QR code generation|
 |`paste-type`|Set paste type|
+|`title`|File's title|
 
 #### For raw request,
 
@@ -129,6 +130,7 @@ Add `?qr=1` to enable QR code generation for paste link.
 |`x-pass`|Paste's password|
 |`x-read-limit`|The maximum access count|
 |`x-paste-type`|Set paste type|
+|`x-qr`|Toggle QR code generation|
 
 The request body contains the upload content.
 
@@ -139,7 +141,7 @@ The request body contains the upload content.
 |`paste`|Normal paste content|
 |`link`|URL link to be redirected|
 
-### GET /\<uuid\>/\<option\> (Not implemented)
+### GET /\<uuid\>/\<option\>
 
 Fetch the paste (code) in rendered HTML with syntax highlighting  
 Add `?qr=1` to enable QR code generation for paste link.  

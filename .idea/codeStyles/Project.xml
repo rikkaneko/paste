@@ -7,9 +7,6 @@
       <option name="GROUP_STDLIB_IMPORTS" value="true" />
       <option name="LOCAL_PACKAGE_PREFIXES" />
     </GoCodeStyleSettings>
-    <HTMLCodeStyleSettings>
-      <option name="HTML_ALIGN_TEXT" value="true" />
-    </HTMLCodeStyleSettings>
     <JSCodeStyleSettings version="0">
       <option name="FORCE_SEMICOLON_STYLE" value="true" />
       <option name="USE_DOUBLE_QUOTES" value="false" />
