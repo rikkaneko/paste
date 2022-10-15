@@ -61,7 +61,7 @@
           <label for="title_input">Title: </label>
         </td>
         <td>
-          <input id="title_input" type="text" name="title" spellcheck="false">
+          <input id="title_input" type="text" name="title" spellcheck="false" style="width: 20em">
         </td>
       </tr>
       <tr>
@@ -69,7 +69,7 @@
           <label for="pass_input">Password: </label>
         </td>
         <td>
-          <input id="pass_input" type="password" name="pass">
+          <input id="pass_input" type="password" name="pass" style="width: 20em">
           <input id="show_pass_button" type="checkbox">
           <label for="show_pass_button">Show</label>
         </td>
@@ -96,7 +96,6 @@
     <input id="sumbit_form_button" type="submit" value="Sumbit" style="font-size: 14px"> (<span
       id="file_stats">0 bytes</span>)
   </div>
-  </div>
 </form>
 
 <script>
@@ -107,6 +106,7 @@
 
   function update_file_status() {
     const status = document.getElementById('file_stats');
+    const title = document.getElementById('title_input');
     if (this.files[0] === undefined) {
       status.textContent = '0 bytes';
       return;
@@ -117,6 +117,7 @@
     for (let i = 0, approx = bytes / 1024; approx > 1; approx /= 1024, i++) {
       size = approx.toFixed(3) + ' ' + units[i];
     }
+    title.value = this.files[0]?.name || '';
     status.textContent = `${this.files[0]?.type || 'application/octet-stream'}, ${size}`;
   }
 
