@@ -469,7 +469,7 @@ async function get_paste_info(uuid: string, descriptor: PasteIndexEntry, env: En
   let content = dedent`
     id: ${uuid}
     link: ${link}
-    type: ${descriptor.type}
+    type: ${descriptor.type ?? 'paste'}
     title: ${descriptor.title?.trim() || '-'}
     mime-type: ${descriptor.mime_type ?? '-'}
     size: ${descriptor.size} bytes (${to_human_readable_size(descriptor.size)})
