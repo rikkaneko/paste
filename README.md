@@ -42,7 +42,7 @@ It is worth noting that Cloudflare Worker is run *before* the cache. Therefore, 
 
 (Compatible to any S3-compatible object storage)  
 **`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` and `ENDPOINT` should be kept secret,
-i.e., [put into the encrypted store](https://developers.cloudflare.com/workers/platform/environment-variables/#adding-secrets-via-wrangler)
+i.e., [encrypted store](https://developers.cloudflare.com/workers/platform/environment-variables/#adding-secrets-via-wrangler)
 .**
 
 ## Usage
@@ -58,7 +58,7 @@ $ curl --data-binary @example.txt -H "x-pass: exmaple1234" "https://pb.nekoul.co
 Upload a file (Formdata) with password enabled
 
 ```shell
-$ curl -F @exmaple.txt -F "pass=example1234" "https://pb.nekoul.com"
+$ curl -F u=@exmaple.txt -F "pass=example1234" "https://pb.nekoul.com"
 ```
 
 Upload command ouput as paste
