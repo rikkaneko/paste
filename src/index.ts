@@ -101,7 +101,7 @@ export default {
           // Content-Type: multipart/form-data
           if (content_type.includes('multipart/form-data')) {
             const formdata = await request.formData();
-            const data = formdata.get('u');
+            const data: File | string | any = formdata.get('u');
             const type = formdata.get('paste-type');
             const file_title = formdata.get('title');
             if (data === null) {

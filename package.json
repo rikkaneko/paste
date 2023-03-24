@@ -1,16 +1,15 @@
 {
     "name": "paste",
-    "version": "1.1",
+    "version": "1.2",
     "dependencies": {
-        "aws4fetch": "^1.0.13",
-        "nanoid": "^3.3.4",
+        "aws4fetch": "^1.0.17",
+        "nanoid": "^4.0.1",
         "js-sha256": "^0.9.0",
         "dedent-js": "^1.0.1"
     },
     "devDependencies": {
-        "@cloudflare/workers-types": "^3.11.0",
-        "typescript": "^4.7.2",
-        "wrangler": "^2.0.7",
-        "@types/mime-types": "^2.1.1"
+        "@cloudflare/workers-types": "^4.20230321.0",
+        "typescript": "^5.0.2",
+        "wrangler": "^2.13.0"
     }
 }
