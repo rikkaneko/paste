@@ -1,6 +1,6 @@
 /*
  * This file is part of paste.
- * Copyright (c) 2022 Joe Ma <rikkaneko23@gmail.com>
+ * Copyright (c) 2022-2023 Joe Ma <rikkaneko23@gmail.com>
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as published by
@@ -86,7 +86,7 @@ export default {
           });
         }
 
-          // Create new paste
+        // Create new paste
         case 'POST':
           const uuid = gen_id();
           let buffer: ArrayBuffer;
@@ -98,7 +98,7 @@ export default {
           let read_limit: number | undefined;
           let need_qrcode: boolean = false;
           let paste_type: string | undefined;
-          // Content-Type: multipart/form-data
+          // Content-Type: multipart/form-data (deprecated)
           if (content_type.includes('multipart/form-data')) {
             const formdata = await request.formData();
             const data: File | string | any = formdata.get('u');
@@ -146,17 +146,17 @@ export default {
               need_qrcode = true;
             }
 
-            // Raw body
+          // Paste API v2
           } else {
-            title = headers.get('x-title') || undefined;
-            mime_type = headers.get('x-content-type') || undefined;
-            password = headers.get('x-pass') || undefined;
+            title = headers.get('x-paste-title') || undefined;
+            mime_type = headers.get('x-paste-content-type') || undefined;
+            password = headers.get('x-paste-pass') || undefined;
             paste_type = headers.get('x-paste-type') || undefined;
-            need_qrcode = headers.get('x-qr') === '1';
-            const count = headers.get('x-read-limit') || '';
+            need_qrcode = headers.get('x-paste-qr') === '1';
+            const count = headers.get('x-paste-read-limit') || '';
             const n = parseInt(count);
             if (isNaN(n) || n <= 0) {
-              return new Response('x-read-limit must be a positive integer.\n', {
+              return new Response('x-paste-read-limit must be a positive integer.\n', {
                 status: 422,
               });
             }
@@ -201,10 +201,10 @@ export default {
             });
           }
 
-          // Check request.body size <= 10MB
+          // Check request.body size <= 25MB
           const size = buffer.byteLength;
-          if (size > 10485760) {
-            return new Response('Paste size must be under 10MB.\n', {
+          if (size > 26214400) {
+            return new Response('Paste size must be under 25MB.\n', {
               status: 422,
             });
           }
@@ -389,7 +389,7 @@ export default {
                   status: 301,
                   headers: {
                     location: href,
-                    ...res.headers,
+                    ...Object.entries(res.headers),
                   },
                 });
               } catch (err) {
