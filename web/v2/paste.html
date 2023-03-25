@@ -1,0 +1,190 @@
+<!--
+  ~ This file is part of paste.
+  ~ Copyright (c) 2022-2023 Joe Ma <rikkaneko23@gmail.com>
+  ~
+  ~ This program is free software: you can redistribute it and/or modify
+  ~ it under the terms of the GNU Lesser General Public License as published by
+  ~ the Free Software Foundation, either version 3 of the License, or
+  ~ (at your option) any later version.
+  ~
+  ~ This program is distributed in the hope that it will be useful,
+  ~ but WITHOUT ANY WARRANTY; without even the implied warranty of
+  ~ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  ~ GNU General Public License for more details.
+  ~
+  ~ You should have received a copy of the GNU Lesser General Public License
+  ~ along with this program.  If not, see <https://www.gnu.org/licenses/>.
+  -->
+
+<!DOCTYPE html>
+<html lang="en" xmlns="http://www.w3.org/1999/html">
+<head>
+  <title>Paste</title>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width initial-scale=1 shrink-to-fit=1">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.css" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.2.2/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.9.1/font/bootstrap-icons.min.css"
+        rel="stylesheet">
+  <link href="css/paste.css" rel="stylesheet">
+</head>
+<body>
+<nav class="navbar sticky-top navbar-expand-lg navbar-dark bg-dark">
+  <div class="container-fluid">
+    <span class="navbar-brand mb-0 h1">Paste</span>
+    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar_supported_content"
+            aria-controls="navbar_supported_content" aria-expanded="false" aria-label="Toggle navigation">
+      <span class="navbar-toggler-icon"></span>
+    </button>
+    <div class="collapse navbar-collapse" id="navbar_supported_content">
+      <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+        <li class="nav-item">
+          <a class="nav-link" aria-current="page" href="https://nekoul.com">Home</a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link" href="https://github.com/rikkaneko/paste#api-specification">API</a>
+        </li>
+      </ul>
+      <form class="d-flex">
+        <input class="form-control me-2" type="search" placeholder="" aria-label="go">
+        <button class="btn btn-outline-success" type="button">Go</button>
+      </form>
+    </div>
+  </div>
+</nav>
+
+<div class="d-flex align-items-center justify-content-center vh-100">
+  <form class="container" style="max-width: 400px" id="upload_form">
+    <div class="mb-3">
+      <div><label class="form-label">Paste Type</label></div>
+      <div class="btn-group w-100" role="group" aria-label="Paste type group">
+        <input type="radio" class="btn-check" name="paste_type" id="paste_type_file" autocomplete="off" checked
+               onclick="select_input_type('file')" value="file">
+        <label class="btn btn-outline-primary" for="paste_type_file">File</label>
+        <input type="radio" class="btn-check" name="paste_type" id="paste_type_text" autocomplete="off"
+               onclick="select_input_type('text')" value="text">
+        <label class="btn btn-outline-primary" for="paste_type_text">Text</label>
+        <input type="radio" class="btn-check" name="paste_type" id="paste_type_url" autocomplete="off"
+               onclick="select_input_type('url')" value="url">
+        <label class="btn btn-outline-primary" for="paste_type_url">URL</label>
+      </div>
+    </div>
+    
+    <div id="file_upload_layout" class="collapse show">
+      <div class="mb-2">
+        <label for="file_upload" class="form-label">Upload File</label>
+        <input class="form-control" type="file" id="file_upload" name="u">
+      </div>
+      <div class="text-sm-start mb-3">
+        <small id="file_stats">0 bytes</small>
+      </div>
+    </div>
+    
+    <div id="text_input_layout" class="collapse">
+      <div class="mb-2">
+        <label for="text_input" class="form-label">Upload Text</label>
+        <textarea class="form-control" id="text_input" rows="10" name="u" disabled></textarea>
+      </div>
+      <div class="text-sm-start mb-3">
+        <small id="char_count">0 characters</small>
+      </div>
+    </div>
+    
+    <div id="url_input_layout" class="collapse">
+      <div class="mb-2">
+        <label for="url_input" class="form-label">URL Address</label>
+        <input type="url" class="form-control" id="url_input" placeholder="https://example.com" name="u" disabled>
+      </div>
+      <div class="text-sm-start mb-3">
+        <small id="url_validate_result"></small>
+      </div>
+    </div>
+    
+    <div class="mb-3">
+      <label for="paste_title" class="form-label">Title</label>
+      <input type="text" class="form-control" id="paste_title" placeholder="" name="title">
+    </div>
+    
+    <div class="card-header mb-3">
+      <span data-bs-toggle="collapse" data-bs-target="#advanced_settings_layout" aria-expanded="false"
+            aria-controls="advanced_settings_layout" id="advanced_settings_control"
+            class="d-block">
+        <i class="fa fa-chevron-down pull-right mt-1"></i>
+        Advanced Settings
+      </span>
+    </div>
+    
+    <div id="advanced_settings_layout" class="collapse">
+      <div class="mb-3">
+        <label class="form-label" for="pass_input">Password</label>
+        <div class="input-group mb-3">
+          <input class="form-control password lock" id="pass_input" type="password" name="pass"/>
+          <span class="input-group-text" style="cursor: pointer" id="show_pass_button">
+            <i class="bi bi-eye-slash" id="show_pass_icon"></i>
+          </span>
+        </div>
+      </div>
+      
+      <div class="mb-3">
+        <label for="read_limit_input" class="form-label">Read limit</label>
+        <input type="number" class="form-control" id="read_limit_input" min="1" name="read-limit">
+      </div>
+      
+      <div class="form-check mb-3">
+        <input class="form-check-input" type="checkbox" value="" id="show_qrcode_checkbox" name="qrcode" checked>
+        <label class="form-check-label" for="show_qrcode_checkbox">
+          Show QR code after upload
+        </label>
+      </div>
+    </div>
+  
+    <div class="form-check mb-3">
+      <input class="form-check-input" type="checkbox" value="" id="tos_btn" required>
+      <label class="form-check-label" for="tos_btn">
+        I understand <a class="link-primary" data-bs-toggle="modal" data-bs-target="#tos_model" role="button">the terms and conditions</a>
+      </label>
+    </div>
+    
+    <div class="mb-3 text-end">
+      <button type="button" class="btn btn-primary" id="upload_button">Upload</button>
+    </div>
+  
+  </form>
+</div>
+
+<div class="modal fade" id="tos_model" tabindex="-1" aria-labelledby="tos_model_label" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="tos_model_label">Terms and conditions</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <h3>Paste Service</h3>
+        <p>
+          <a href="https://pb.nekoul.com">pb.nekoul.com</a> is a pastebin-like service hosted on Cloudflare Worker.<br>
+          This service is primarily designed for own usage and interest only.<br>
+          All data may be deleted or expired without any notification and guarantee. Please <b>DO NOT</b> abuse this
+          service.<br>
+          The limit for file upload is <b>10 MB</b> and the paste will be kept for <b>28 days</b> only by default.<br>
+          The source code is available in my GitHub repository <a href="https://github.com/rikkaneko/paste">[here]</a>.<br>
+          This webpage is designed for upload files only.
+          For other operations like changing paste settings and deleting paste, please make use of the
+          <a href="https://github.com/rikkaneko/paste#api-specification">API call</a> with <a
+            href="https://wiki.archlinux.org/title/CURL">curl</a>.
+        </p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.1/jquery.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/2.11.6/umd/popper.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.2.2/js/bootstrap.min.js"></script>
+<script src="js/paste.js"></script>
+</body>
+</html>
+
