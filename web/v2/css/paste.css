@@ -16,10 +16,10 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-.card-header .fa {
+.card-header .fa-chevron-down {
   transition: .3s transform ease-in-out;
 }
 
-.card-header .collapsed .fa {
+.card-header .collapsed .fa-chevron-down {
   transform: rotate(90deg);
 }

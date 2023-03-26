@@ -23,8 +23,8 @@ import dedent from 'dedent-js';
 
 // Constants
 const SERVICE_URL = 'pb.nekoul.com';
-const PASTE_INDEX_HTML_URL_v1 = 'https://raw.githubusercontent.com/rikkaneko/paste/main/web/v1/paste.html';
-const PASTE_INDEX_HTML_URL = 'https://raw.githubusercontent.com/rikkaneko/paste/main/web/v2/paste.html';
+const PASTE_WEB_URL_v1 = 'https://raw.githubusercontent.com/rikkaneko/paste/main/web/v1';
+const PASTE_WEB_URL = 'https://raw.githubusercontent.com/rikkaneko/paste/main/web/v2';
 const UUID_LENGTH = 4;
 
 export interface Env {
@@ -69,7 +69,23 @@ export default {
     }
 
     if (path === '/v1' && method == 'GET') {
-      return await fetch(PASTE_INDEX_HTML_URL_v1, {
+      return await fetch(PASTE_WEB_URL_v1 + '/paste.html', {
+        cf: {
+          cacheEverything: true,
+        },
+      }).then(value => {
+        return new Response(value.body, {
+          // Add the correct content-type to response header
+          headers: {
+            'content-type': 'text/html; charset=UTF-8;',
+            'cache-control': 'public, max-age=172800',
+          },
+        });
+      });
+    }
+
+    if (/\/(js|css)\/.*$/.test(path) && method == 'GET') {
+      return await fetch(PASTE_WEB_URL + path, {
         cf: {
           cacheEverything: true,
         },
@@ -88,7 +104,7 @@ export default {
       switch (method) {
           // Fetch the HTML for uploading text/file
         case 'GET': {
-          return await fetch(PASTE_INDEX_HTML_URL, {
+          return await fetch(PASTE_WEB_URL + '/paste.html', {
             cf: {
               cacheEverything: true,
             },
