@@ -69,54 +69,18 @@ export default {
     }
 
     if (path === '/v1' && method == 'GET') {
-      return await fetch(PASTE_WEB_URL_v1 + '/paste.html', {
-        cf: {
-          cacheEverything: true,
-        },
-      }).then(value => {
-        return new Response(value.body, {
-          // Add the correct content-type to response header
-          headers: {
-            'content-type': 'text/html; charset=UTF-8;',
-            'cache-control': 'public, max-age=172800',
-          },
-        });
-      });
+      return await proxy_uri(PASTE_WEB_URL_v1 + '/paste.html');
     }
 
     if (/\/(js|css)\/.*$/.test(path) && method == 'GET') {
-      return await fetch(PASTE_WEB_URL + path, {
-        cf: {
-          cacheEverything: true,
-        },
-      }).then(value => {
-        return new Response(value.body, {
-          // Add the correct content-type to response header
-          headers: {
-            'content-type': 'text/html; charset=UTF-8;',
-            'cache-control': 'public, max-age=172800',
-          },
-        });
-      });
+      return await proxy_uri(PASTE_WEB_URL + path);
     }
 
     if (path === '/') {
       switch (method) {
-          // Fetch the HTML for uploading text/file
         case 'GET': {
-          return await fetch(PASTE_WEB_URL + '/paste.html', {
-            cf: {
-              cacheEverything: true,
-            },
-          }).then(value => {
-            return new Response(value.body, {
-              // Add the correct content-type to response header
-              headers: {
-                'content-type': 'text/html; charset=UTF-8;',
-                'cache-control': 'public, max-age=172800',
-              },
-            });
-          });
+          // Fetch the HTML for uploading text/file
+          return await proxy_uri(PASTE_WEB_URL + '/paste.html');
         }
 
         // Create new paste
@@ -634,6 +598,27 @@ function to_human_readable_size(bytes: number): string {
     size = approx.toFixed(3) + ' ' + units[i];
   }
   return size;
+}
+
+// Proxy URI (limit to html/js/css)
+async function proxy_uri(path: string, cf: RequestInitCfProperties = {cacheEverything: true}) {
+  // Fix content type
+  let file_type = 'text/plain';
+  if (path.endsWith('.js')) file_type = 'application/javascript';
+  if (path.endsWith('.css')) file_type = 'text/css';
+  if (path.endsWith('.html')) file_type = 'text/html';
+
+  return await fetch(path, {
+    cf,
+  }).then(value => {
+    return new Response(value.body, {
+      // Add the correct content-type to response header
+      headers: {
+        'content-type': `${file_type}; charset=UTF-8;`,
+        'cache-control': 'public, max-age=172800',
+      },
+    });
+  });
 }
 
 interface PasteIndexEntry {

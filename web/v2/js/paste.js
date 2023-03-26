@@ -52,7 +52,7 @@ function validate_url(path) {
 
 function show_pop_alert(message, alert_type = 'alert-primary') {
   remove_pop_alert();
-  $('body').prepend(jQuery.parseHTML(
+  $('.navbar').after(jQuery.parseHTML(
       `<div class="alert ${alert_type} alert-dismissible fade show position-absolute top-0 start-50 translate-middle-x" 
             style="margin-top: 80px; max-width: 500px; width: 80%" id="pop_alert" role="alert"> \
       <div>${message}</div> \
