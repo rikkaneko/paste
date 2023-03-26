@@ -68,7 +68,7 @@ function remove_pop_alert() {
     alert.remove();
 }
 
-function build_paste_modal(paste_info, show_qrcode = true) {
+function build_paste_modal(paste_info, show_qrcode = true, saved = true) {
   // Show saved modal
   if (!!!paste_info && !!!saved_modal) {
     console.err('Invalid call to build_paste_modal().');
@@ -80,7 +80,6 @@ function build_paste_modal(paste_info, show_qrcode = true) {
     return;
   }
 
-  saved_modal = null;
   paste_modal.uuid.text(paste_info.link);
   paste_modal.uuid.prop('href', paste_info.link);
   paste_modal.qrcode.prop('src', paste_info.link_qr);
@@ -95,7 +94,7 @@ function build_paste_modal(paste_info, show_qrcode = true) {
     $(`#paste_info_${key}`).text(val ?? '-');
   });
   let modal = new bootstrap.Modal(paste_modal.modal);
-  saved_modal = modal;
+  if (saved) saved_modal = modal;
   modal.show();
 }
 
@@ -121,6 +120,7 @@ $(function () {
   let show_saved_btn = $('#show_saved_button');
   let go_btn = $('#go_button');
   let go_id = $('#go_paste_id');
+  let view_btn = $('#view_info_button');
 
   // Enable bootstrap tooltips
   const tooltip_trigger_list = [].slice.call($('[data-bs-toggle="tooltip"]'));
@@ -231,9 +231,8 @@ $(function () {
         body: filtered,
       });
 
-      const paste_info = await res.json();
-
       if (res.ok) {
+        const paste_info = await res.json();
         show_pop_alert('Paste created!', 'alert-success');
         pass_input.val('');
         build_paste_modal(paste_info, show_qrcode);
@@ -266,6 +265,28 @@ $(function () {
     }
     window.open(`https://pb.nekoul.com/${uuid}`);
   });
+
+  view_btn.on('click', async function () {
+    const uuid = go_id.val();
+    if (uuid.length !== 4) {
+      show_pop_alert('Invalid Paste ID.', 'alert-warning');
+      return;
+    }
+
+    try {
+      const res = await fetch(`${endpoint}/${uuid}/settings?${new URLSearchParams({json: '1'})}`);
+      if (res.ok) {
+        const paste_info = await res.json();
+        build_paste_modal(paste_info, true);
+      } else {
+        show_pop_alert('Invalid Paste ID.', 'alert-warning');
+      }
+    } catch (err) {
+      console.log('error', err);
+      show_pop_alert(err.message, 'alert-danger');
+    }
+  });
+
 });
 
 function select_input_type(name) {

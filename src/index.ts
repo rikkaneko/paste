@@ -278,7 +278,8 @@ export default {
         switch (method) {
           case 'GET': {
             const need_qrcode = searchParams.get('qr') === '1' || headers.get('x-qr') === '1';
-            return await get_paste_info(uuid, descriptor, env, is_browser, need_qrcode);
+            const reply_json = searchParams.get('json') === '1' || headers.get('x-json') === '1';
+            return await get_paste_info(uuid, descriptor, env, is_browser, need_qrcode, reply_json);
           }
 
           case 'POST': {

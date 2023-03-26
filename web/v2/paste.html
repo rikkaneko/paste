@@ -29,9 +29,9 @@
   <link href="css/paste.css" rel="stylesheet">
 </head>
 <body>
-<nav class="navbar sticky-top navbar-expand-lg navbar-dark bg-dark">
+<nav class="navbar navbar-expand-lg navbar-dark bg-dark">
   <div class="container-fluid">
-    <span class="navbar-brand mb-0 h1">Paste</span>
+    <span class="navbar-brand">Paste</span>
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar_supported_content"
             aria-controls="navbar_supported_content" aria-expanded="false" aria-label="Toggle navigation">
       <span class="navbar-toggler-icon"></span>
@@ -48,10 +48,11 @@
           <a class="nav-link" href="https://pb.nekoul.com/v1">Switch to old version</a>
         </li>
       </ul>
-      <form class="d-flex">
+      <form class="d-flex" role="search">
         <input class="form-control me-2" type="search" placeholder="Paste ID" aria-label="go" id="go_paste_id"
                data-bs-toggle="tooltip" data-bs-placement="bottom" title="Paste ID should be in 4 characters.">
-        <button class="btn btn-outline-success" type="button" id="go_button">Go</button>
+        <button class="btn btn-outline-success me-2" type="button" id="go_button">Go</button>
+        <button class="btn btn-outline-success" type="button" id="view_info_button">Detail</button>
       </form>
     </div>
   </div>
