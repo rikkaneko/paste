@@ -16,6 +16,8 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+const endpoint = 'https://pb.nekoul.com';
+
 let input_div = {
   file: null,
   text: null,
@@ -28,7 +30,15 @@ let inputs = {
   url: null,
 };
 
-let selected_type = 'file';
+let paste_modal = {
+  modal: null,
+  uuid: null,
+  qrcode: null,
+  title: null,
+  expired: null,
+};
+
+let saved_modal = null;
 
 function validate_url(path) {
   let url;
@@ -43,18 +53,50 @@ function validate_url(path) {
 function show_pop_alert(message, alert_type = 'alert-primary') {
   remove_pop_alert();
   $('body').prepend(jQuery.parseHTML(
-      `<div class="alert ${alert_type} alert-dismissible position-absolute top-0 start-50 translate-middle-x outer" 
+      `<div class="alert ${alert_type} alert-dismissible fade show position-absolute top-0 start-50 translate-middle-x" 
             style="margin-top: 80px; max-width: 500px; width: 80%" id="pop_alert" role="alert"> \
       <div>${message}</div> \
       <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button> \
       </div>`,
   ));
+  window.scrollTo(0, 0);
 }
 
 function remove_pop_alert() {
   const alert = $('#pop_alert');
   if (alert.length)
     alert.remove();
+}
+
+function build_paste_modal(paste_info, show_qrcode = true) {
+  // Show saved modal
+  if (!!!paste_info && !!!saved_modal) {
+    console.err('Invalid call to build_paste_modal().');
+    return;
+  }
+
+  if (!!!paste_info) {
+    saved_modal.show();
+    return;
+  }
+
+  saved_modal = null;
+  paste_modal.uuid.text(paste_info.link);
+  paste_modal.uuid.prop('href', paste_info.link);
+  paste_modal.qrcode.prop('src', paste_info.link_qr);
+  paste_modal.qrcode.prop('alt', paste_info.link);
+
+  // Hide/Show QRCode
+  if (!show_qrcode) paste_modal.qrcode.addClass('d-none');
+  else paste_modal.qrcode.removeClass('d-none');
+
+  Object.entries(paste_info).forEach(([key, val]) => {
+    if (key.includes('link')) return;
+    $(`#paste_info_${key}`).text(val ?? '-');
+  });
+  let modal = new bootstrap.Modal(paste_modal.modal);
+  saved_modal = modal;
+  modal.show();
 }
 
 $(function () {
@@ -64,6 +106,9 @@ $(function () {
   inputs.file = $('#file_upload');
   inputs.text = $('#text_input');
   inputs.url = $('#url_input');
+  paste_modal.modal = $('#paste_modal');
+  paste_modal.uuid = $('#paste_uuid');
+  paste_modal.qrcode = $('#paste_qrcode');
 
   let file_stat = $('#file_stats');
   let title = $('#paste_title');
@@ -73,6 +118,15 @@ $(function () {
   let upload_button = $('#upload_button');
   let url_validate_result = $('#url_validate_result');
   let tos_btn = $('#tos_btn');
+  let show_saved_btn = $('#show_saved_button');
+  let go_btn = $('#go_button');
+  let go_id = $('#go_paste_id');
+
+  // Enable bootstrap tooltips
+  const tooltip_trigger_list = [].slice.call($('[data-bs-toggle="tooltip"]'));
+  const tooltip_list = tooltip_trigger_list.map(function (e) {
+    return new bootstrap.Tooltip(e);
+  });
 
   inputs.file.on('change', function () {
     inputs.file.removeClass('is-invalid');
@@ -124,6 +178,7 @@ $(function () {
   inputs.url.on('input', function () {
     inputs.url.removeClass('is-invalid');
     url_validate_result.removeClass('text-danger');
+    url_validate_result.text('');
     if (!validate_url(this.value)) {
       inputs.url.addClass('is-invalid');
       url_validate_result.addClass('text-danger');
@@ -131,16 +186,15 @@ $(function () {
     }
   });
 
-  upload_button.on('click', function () {
-    inputs[selected_type].trigger('input');
+  upload_button.on('click', async function () {
     const form = $('#upload_form')[0];
-    const formdata = new FormData(form);
-    let content = {};
-    formdata.forEach((val, key) => {
-      content[key] = val;
-    });
+    let formdata = new FormData(form);
+    const type = formdata.get('paste-type');
+    const content = formdata.get('u');
+    const show_qrcode = formdata.get('qrcode') === '1';
 
-    if (inputs[selected_type].hasClass('is-invalid') || !(!!content.u?.size || !!content.u?.length)) {
+    inputs[type].trigger('input');
+    if (inputs[type].hasClass('is-invalid') || !(!!content?.size || !!content?.length)) {
       show_pop_alert('Please check your upload file or content', 'alert-danger');
       return false;
     }
@@ -150,13 +204,71 @@ $(function () {
       return false;
     }
 
-    // TODO Upload to pb service
-    show_pop_alert('Paste created!', 'alert-success');
+    switch (type) {
+      case 'file':
+        formdata.set('paste-type', 'paste');
+        break;
+      case 'text':
+        formdata.set('paste-type', 'paste');
+        break;
+      case 'url':
+        formdata.set('paste-type', 'link');
+    }
+
+    // Remove empty entries
+    let filtered = new FormData();
+    formdata.forEach((val, key) => {
+      if (!!val) filtered.set(key, val);
+    });
+
+    // Request JSON response
+    filtered.set('json', '1');
+    upload_button.prop('disabled', true);
+    upload_button.text('Uploading...');
+    try {
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        body: filtered,
+      });
+
+      const paste_info = await res.json();
+
+      if (res.ok) {
+        show_pop_alert('Paste created!', 'alert-success');
+        pass_input.val('');
+        build_paste_modal(paste_info, show_qrcode);
+        show_saved_btn.prop('disabled', false);
+      } else {
+        show_pop_alert('Unable to create paste', 'alert-warning');
+      }
+    } catch (err) {
+      console.log('error', err);
+      show_pop_alert(err.message, 'alert-danger');
+    }
+
+    upload_button.prop('disabled', false);
+    upload_button.text('Upload');
+  });
+
+  show_saved_btn.on('click', function () {
+    if (!!!saved_modal) {
+      show_pop_alert('No saved paste found.', 'alert-warning');
+      return;
+    }
+    saved_modal.show();
+  });
+
+  go_btn.on('click', function () {
+    const uuid = go_id.val();
+    if (uuid.length !== 4) {
+      show_pop_alert('Invalid Paste ID.', 'alert-warning');
+      return;
+    }
+    window.open(`https://pb.nekoul.com/${uuid}`);
   });
 });
 
 function select_input_type(name) {
-  selected_type = name;
   Object.keys(input_div).forEach(key => {
     input_div[key].collapse('hide');
     inputs[key].prop('disabled', true);

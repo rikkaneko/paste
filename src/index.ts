@@ -23,7 +23,8 @@ import dedent from 'dedent-js';
 
 // Constants
 const SERVICE_URL = 'pb.nekoul.com';
-const PASTE_INDEX_HTML_URL = 'https://raw.githubusercontent.com/rikkaneko/paste/main/paste.html';
+const PASTE_INDEX_HTML_URL_v1 = 'https://raw.githubusercontent.com/rikkaneko/paste/main/web/v1/paste.html';
+const PASTE_INDEX_HTML_URL = 'https://raw.githubusercontent.com/rikkaneko/paste/main/web/v2/paste.html';
 const UUID_LENGTH = 4;
 
 export interface Env {
@@ -67,6 +68,22 @@ export default {
       });
     }
 
+    if (path === '/v1' && method == 'GET') {
+      return await fetch(PASTE_INDEX_HTML_URL_v1, {
+        cf: {
+          cacheEverything: true,
+        },
+      }).then(value => {
+        return new Response(value.body, {
+          // Add the correct content-type to response header
+          headers: {
+            'content-type': 'text/html; charset=UTF-8;',
+            'cache-control': 'public, max-age=172800',
+          },
+        });
+      });
+    }
+
     if (path === '/') {
       switch (method) {
           // Fetch the HTML for uploading text/file
@@ -98,6 +115,7 @@ export default {
           let read_limit: number | undefined;
           let need_qrcode: boolean = false;
           let paste_type: string | undefined;
+          let reply_json: boolean = false;
           // Content-Type: multipart/form-data (deprecated)
           if (content_type.includes('multipart/form-data')) {
             const formdata = await request.formData();
@@ -142,17 +160,24 @@ export default {
 
             // Check if qrcode generation needed
             const qr = formdata.get('qrcode');
-            if (typeof qr === 'string' && qr.toLowerCase() === 'true' || qr === 'on') {
+            if (typeof qr === 'string' && qr === '1') {
               need_qrcode = true;
             }
 
-          // Paste API v2
+            // Check reply format
+            const json = formdata.get('json');
+            if (typeof json === 'string' && json === '1') {
+              reply_json = true;
+            }
+
+            // Paste API v2
           } else {
             title = headers.get('x-paste-title') || undefined;
             mime_type = headers.get('x-paste-content-type') || undefined;
             password = headers.get('x-paste-pass') || undefined;
             paste_type = headers.get('x-paste-type') || undefined;
             need_qrcode = headers.get('x-paste-qr') === '1';
+            reply_json = headers.get('x-json') === '1';
             const count = headers.get('x-paste-read-limit') || '';
             const n = parseInt(count);
             if (isNaN(n) || n <= 0) {
@@ -235,7 +260,7 @@ export default {
 
             // Key will be expired after 28 day if unmodified
             ctx.waitUntil(env.PASTE_INDEX.put(uuid, JSON.stringify(descriptor), {expirationTtl: 2419200}));
-            return await get_paste_info(uuid, descriptor, env, is_browser, need_qrcode);
+            return await get_paste_info(uuid, descriptor, env, is_browser, need_qrcode, reply_json);
           } else {
             return new Response('Unable to upload the paste.\n', {
               status: 500,
@@ -462,22 +487,49 @@ export default {
   },
 };
 
-async function get_paste_info(uuid: string, descriptor: PasteIndexEntry, env: Env, use_html: boolean = true, need_qr: boolean = false): Promise<Response> {
+async function get_paste_info(uuid: string, descriptor: PasteIndexEntry, env: Env,
+                              use_html: boolean = true, need_qr: boolean = false, reply_json = false): Promise<Response> {
   const created = new Date(descriptor.last_modified);
   const expired = new Date(descriptor.last_modified + 2419200000);
   const link = `https://${SERVICE_URL}/${uuid}`;
+  const paste_info = {
+    uuid,
+    link,
+    link_qr: 'https://qrcode.nekoul.com/?' + new URLSearchParams({q: link, type: 'svg'}),
+    type: descriptor.type ?? 'paste',
+    title: descriptor.title?.trim(),
+    mime_type: descriptor.mime_type,
+    human_readable_size: `${to_human_readable_size(descriptor.size)}`,
+    size: descriptor.size,
+    password: !!descriptor.password,
+    read_count_remain: descriptor.read_count_remain,
+    created: created.toISOString(),
+    expired: expired.toISOString(),
+  };
+
+  // Reply with JSON
+  if (reply_json) {
+    return new Response(JSON.stringify(paste_info), {
+      headers: {
+        'content-type': 'application/json; charset=utf-8',
+        'cache-control': 'no-store',
+      },
+    });
+  }
+
+  // Plain text reply
   let content = dedent`
-    id: ${uuid}
+    uuid: ${uuid}
     link: ${link}
-    type: ${descriptor.type ?? 'paste'}
-    title: ${descriptor.title?.trim() || '-'}
-    mime-type: ${descriptor.mime_type ?? '-'}
-    size: ${descriptor.size} bytes (${to_human_readable_size(descriptor.size)})
-    password: ${(!!descriptor.password)}
-    remaining read count: ${descriptor.read_count_remain !== undefined ?
-      descriptor.read_count_remain ? descriptor.read_count_remain : `0 (expired)` : '-'}
-    created at ${created.toISOString()}
-    expired at ${expired.toISOString()}
+    type: ${paste_info.type ?? 'paste'}
+    title: ${paste_info.title || '-'}
+    mime-type: ${paste_info.mime_type ?? '-'}
+    size: ${paste_info.size} bytes (${paste_info.human_readable_size})
+    password: ${paste_info.password}
+    remaining read count: ${paste_info.read_count_remain !== undefined ?
+      paste_info.read_count_remain ? paste_info.read_count_remain : `0 (expired)` : '-'}
+    created at ${paste_info.created}
+    expired at ${paste_info.expired}
     `;
 
   // Browser response
@@ -492,7 +544,7 @@ async function get_paste_info(uuid: string, descriptor: PasteIndexEntry, env: En
         <body>
           <pre style="word-wrap: break-word; white-space: pre-wrap;
             font-family: 'Fira Mono', monospace; font-size: 16px;">${content}</pre>
-          ${(need_qr) ? `<img src="${'https://qrcode.nekoul.com/?' + new URLSearchParams({q: link, type: 'svg'})}"
+          ${(need_qr) ? `<img src="${paste_info.link_qr}"
             alt="${link}" style="max-width: 280px">` : ''} 
         </body>
       </html>

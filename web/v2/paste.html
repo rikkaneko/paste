@@ -39,15 +39,19 @@
     <div class="collapse navbar-collapse" id="navbar_supported_content">
       <ul class="navbar-nav me-auto mb-2 mb-lg-0">
         <li class="nav-item">
-          <a class="nav-link" aria-current="page" href="https://nekoul.com">Home</a>
+          <a class="nav-link active" aria-current="page" href="https://nekoul.com">Home</a>
         </li>
         <li class="nav-item">
-          <a class="nav-link" href="https://github.com/rikkaneko/paste#api-specification">API</a>
+          <a class="nav-link active" href="https://github.com/rikkaneko/paste#api-specification">API</a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link" href="https://pb.nekoul.com/v1">Switch to old version</a>
         </li>
       </ul>
       <form class="d-flex">
-        <input class="form-control me-2" type="search" placeholder="" aria-label="go">
-        <button class="btn btn-outline-success" type="button">Go</button>
+        <input class="form-control me-2" type="search" placeholder="Paste ID" aria-label="go" id="go_paste_id"
+               data-bs-toggle="tooltip" data-bs-placement="bottom" title="Paste ID should be in 4 characters.">
+        <button class="btn btn-outline-success" type="button" id="go_button">Go</button>
       </form>
     </div>
   </div>
@@ -58,13 +62,13 @@
     <div class="mb-3">
       <div><label class="form-label">Paste Type</label></div>
       <div class="btn-group w-100" role="group" aria-label="Paste type group">
-        <input type="radio" class="btn-check" name="paste_type" id="paste_type_file" autocomplete="off" checked
+        <input type="radio" class="btn-check" name="paste-type" id="paste_type_file" autocomplete="off" checked
                onclick="select_input_type('file')" value="file">
         <label class="btn btn-outline-primary" for="paste_type_file">File</label>
-        <input type="radio" class="btn-check" name="paste_type" id="paste_type_text" autocomplete="off"
+        <input type="radio" class="btn-check" name="paste-type" id="paste_type_text" autocomplete="off"
                onclick="select_input_type('text')" value="text">
         <label class="btn btn-outline-primary" for="paste_type_text">Text</label>
-        <input type="radio" class="btn-check" name="paste_type" id="paste_type_url" autocomplete="off"
+        <input type="radio" class="btn-check" name="paste-type" id="paste_type_url" autocomplete="off"
                onclick="select_input_type('url')" value="url">
         <label class="btn btn-outline-primary" for="paste_type_url">URL</label>
       </div>
@@ -131,7 +135,7 @@
       </div>
       
       <div class="form-check mb-3">
-        <input class="form-check-input" type="checkbox" value="" id="show_qrcode_checkbox" name="qrcode" checked>
+        <input class="form-check-input" type="checkbox" id="show_qrcode_checkbox" name="qrcode" checked value="1">
         <label class="form-check-label" for="show_qrcode_checkbox">
           Show QR code after upload
         </label>
@@ -141,33 +145,37 @@
     <div class="form-check mb-3">
       <input class="form-check-input" type="checkbox" value="" id="tos_btn" required>
       <label class="form-check-label" for="tos_btn">
-        I understand <a class="link-primary" data-bs-toggle="modal" data-bs-target="#tos_model" role="button">the terms and conditions</a>
+        I understand <a class="link-primary" data-bs-toggle="modal" data-bs-target="#tos_modal" role="button">the terms
+        and conditions</a>
       </label>
     </div>
-    
+  
     <div class="mb-3 text-end">
+      <button type="button" class="btn btn-secondary me-2" id="show_saved_button" disabled>Show saved</button>
       <button type="button" class="btn btn-primary" id="upload_button">Upload</button>
     </div>
-  
+
+
   </form>
 </div>
 
-<div class="modal fade" id="tos_model" tabindex="-1" aria-labelledby="tos_model_label" aria-hidden="true">
+<div class="modal fade" id="tos_modal" tabindex="-1" aria-labelledby="tos_modal_label" aria-hidden="true">
   <div class="modal-dialog modal-dialog-scrollable">
     <div class="modal-content">
       <div class="modal-header">
-        <h5 class="modal-title" id="tos_model_label">Terms and conditions</h5>
+        <h5 class="modal-title" id="tos_modal_label">Terms and conditions</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
         <h3>Paste Service</h3>
         <p>
-          <a href="https://pb.nekoul.com">pb.nekoul.com</a> is a pastebin-like service hosted on Cloudflare Worker.<br>
+          <a href="https://pb.nekoul.com">pb.nekoul.com</a> is a pastebin-like service hosted on Cloudflare Worker.
           This service is primarily designed for own usage and interest only.<br>
           All data may be deleted or expired without any notification and guarantee. Please <b>DO NOT</b> abuse this
-          service.<br>
+          service.
           The limit for file upload is <b>10 MB</b> and the paste will be kept for <b>28 days</b> only by default.<br>
-          The source code is available in my GitHub repository <a href="https://github.com/rikkaneko/paste">[here]</a>.<br>
+          The source code is available in my GitHub repository <a
+            href="https://github.com/rikkaneko/paste">[here]</a>.<br>
           This webpage is designed for upload files only.
           For other operations like changing paste settings and deleting paste, please make use of the
           <a href="https://github.com/rikkaneko/paste#api-specification">API call</a> with <a
@@ -175,7 +183,66 @@
         </p>
       </div>
       <div class="modal-footer">
-        <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Close</button>
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="paste_modal" tabindex="-1" aria-labelledby="paste_modal_label" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="paste_modal_label">Paste</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-2 text-center fs-4">
+          <a href="" class="link-primary" id="paste_uuid"></a>
+        </div>
+        <img src="" class="mb-3 rounded mx-auto d-block w-75" alt="" id="paste_qrcode" style="max-width: 280px">
+        <div class="mb-3 w-75 mx-auto">
+          <table class="table table-striped table-bordered align-middle caption-top">
+            <caption>Paste information</caption>
+            <tbody>
+            <tr>
+              <td class="text-center col-3">Paste ID</td>
+              <td class="text-center col-6" id="paste_info_uuid">-</td>
+            </tr>
+            <tr>
+              <td class="text-center col-3">Title</td>
+              <td class="text-center col-6" id="paste_info_title">-</td>
+            </tr>
+            <tr>
+              <td class="text-center col-3">Type</td>
+              <td class="text-center col-6" id="paste_info_type">-</td>
+            </tr>
+            <tr>
+              <td class="text-center col-3">Size</td>
+              <td class="text-center col-6" id="paste_info_human_readable_size">-</td>
+            </tr>
+            <tr>
+              <td class="text-center col-3">Password</td>
+              <td class="text-center col-6" id="paste_info_password">-</td>
+            </tr>
+            <tr>
+              <td class="text-center col-3">Read limit</td>
+              <td class="text-center col-6" id="paste_info_read_count_remain">-</td>
+            </tr>
+            <tr>
+              <td class="text-center col-3">Created</td>
+              <td class="text-center col-6" id="paste_info_created">-</td>
+            </tr>
+            <tr>
+              <td class="text-center col-3">Expired</td>
+              <td class="text-center col-6" id="paste_info_expired">-</td>
+            </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
       </div>
     </div>
   </div>
