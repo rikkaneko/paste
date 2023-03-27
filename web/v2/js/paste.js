@@ -54,9 +54,9 @@ function validate_url(path) {
 
 function show_pop_alert(message, alert_type = 'alert-primary', add_classes = null) {
   remove_pop_alert();
-  $('.navbar').after(jQuery.parseHTML(
+  $('#alert-container').prepend(jQuery.parseHTML(
       `<div class="alert ${alert_type} alert-dismissible position-absolute fade show top-0 start-50 translate-middle-x" 
-            style="margin-top: 80px; max-width: 500px; width: 80%" id="pop_alert" role="alert"> \
+            style="margin-top: 30px; max-width: 500px; width: 80%" id="pop_alert" role="alert"> \
       <div>${message}</div> \
       <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button> \
       </div>`,
@@ -73,7 +73,7 @@ function remove_pop_alert() {
     alert.remove();
 }
 
-function build_paste_modal(paste_info, show_qrcode = true, saved = true) {
+function build_paste_modal(paste_info, show_qrcode = true, saved = true, build_only = false) {
   // Show saved modal
   if (!!!paste_info && !!!saved_modal) {
     console.err('Invalid call to build_paste_modal().');
@@ -107,7 +107,7 @@ function build_paste_modal(paste_info, show_qrcode = true, saved = true) {
   });
   let modal = new bootstrap.Modal(paste_modal.modal);
   if (saved) saved_modal = modal;
-  modal.show();
+  if (!build_only) modal.show();
 }
 
 $(function () {

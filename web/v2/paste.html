@@ -29,7 +29,7 @@
   <link href="css/paste.css" rel="stylesheet">
 </head>
 <body>
-<nav class="navbar sticky-top navbar-expand-lg navbar-dark bg-dark">
+<nav class="navbar sticky-top navbar-expand-lg navbar-dark bg-dark" id="navbar">
   <div class="container-fluid">
     <span class="navbar-brand">Paste</span>
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar_supported_content"
@@ -58,8 +58,12 @@
   </div>
 </nav>
 
-<div class="d-flex align-items-center justify-content-center vh-100">
-  <form class="container" style="max-width: 400px" id="upload_form">
+<div class="position-relative mb-2" id="alert-container">
+
+</div>
+
+<div class="d-flex justify-content-center vh-100" style="margin-top: 130px">
+  <form class="container" style="max-width: 400px;" id="upload_form">
     <div class="mb-3">
       <div><label class="form-label">Paste Type</label></div>
       <div class="btn-group w-100" role="group" aria-label="Paste type group">
@@ -142,7 +146,7 @@
         </label>
       </div>
     </div>
-  
+    
     <div class="form-check mb-3">
       <input class="form-check-input" type="checkbox" value="" id="tos_btn" required>
       <label class="form-check-label" for="tos_btn">
@@ -150,12 +154,12 @@
         the terms of service</u></a>
       </label>
     </div>
-  
+    
     <div class="mb-3 text-end">
-      <button type="button" class="btn btn-secondary me-2" id="show_saved_button" disabled>Show saved</button>
+      <button type="button" class="btn btn-secondary me-2" id="show_saved_button" disabled>Saved Paste</button>
       <button type="button" class="btn btn-primary" id="upload_button">Upload</button>
     </div>
-
+  
   </form>
 </div>
 
@@ -163,7 +167,7 @@
   <div class="modal-dialog modal-dialog-scrollable">
     <div class="modal-content">
       <div class="modal-header">
-        <h5 class="modal-title" id="tos_modal_label">Terms and conditions</h5>
+        <h5 class="modal-title" id="tos_modal_label">Terms of service</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
