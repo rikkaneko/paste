@@ -52,15 +52,18 @@ function validate_url(path) {
   return url.protocol === 'http:' || url.protocol === 'https:';
 }
 
-function show_pop_alert(message, alert_type = 'alert-primary') {
+function show_pop_alert(message, alert_type = 'alert-primary', add_classes = null) {
   remove_pop_alert();
   $('.navbar').after(jQuery.parseHTML(
-      `<div class="alert ${alert_type} alert-dismissible fade show position-absolute top-0 start-50 translate-middle-x" 
+      `<div class="alert ${alert_type} alert-dismissible position-absolute fade show top-0 start-50 translate-middle-x" 
             style="margin-top: 80px; max-width: 500px; width: 80%" id="pop_alert" role="alert"> \
       <div>${message}</div> \
       <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button> \
       </div>`,
   ));
+  if (add_classes) {
+    $('.alert').addClass(add_classes);
+  }
   window.scrollTo(0, 0);
 }
 
@@ -211,7 +214,8 @@ $(function () {
     }
 
     if (!tos_btn.prop('checked')) {
-      show_pop_alert('Please read the TOS before upload', 'alert-warning');
+      show_pop_alert('Please read the team and conditions before upload', 'alert-warning', 'tos-alert');
+      tos_btn.addClass('is-invalid');
       return false;
     }
 
@@ -258,6 +262,11 @@ $(function () {
 
     upload_button.prop('disabled', false);
     upload_button.text('Upload');
+  });
+
+  tos_btn.on('click', function () {
+    tos_btn.removeClass('is-invalid');
+    $('.tos-alert').remove();
   });
 
   show_saved_btn.on('click', function () {
