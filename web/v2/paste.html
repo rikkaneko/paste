@@ -50,7 +50,8 @@
       </ul>
       <form class="d-flex" role="search">
         <input class="form-control me-2" type="search" placeholder="Paste ID" aria-label="go" id="go_paste_id"
-               data-bs-toggle="tooltip" data-bs-placement="bottom" title="Paste ID should be in 4 characters.">
+               maxlength="4" data-bs-toggle="tooltip" data-bs-placement="bottom"
+               title="Paste ID should be in 4 characters.">
         <button class="btn btn-outline-success me-2" type="button" id="go_button">Go</button>
         <button class="btn btn-outline-success" type="button" id="view_info_button">Detail</button>
       </form>
@@ -140,9 +141,9 @@
       </div>
       
       <div class="form-check mb-3">
-        <input class="form-check-input" type="checkbox" id="show_qrcode_checkbox" name="qrcode" checked value="1">
+        <input class="form-check-input" type="checkbox" id="show_qrcode_checkbox" checked value="1">
         <label class="form-check-label" for="show_qrcode_checkbox">
-          Show QR code after upload
+          Show QR code
         </label>
       </div>
     </div>
@@ -257,7 +258,11 @@
         </div>
       </div>
       <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+        <button type="button" class="btn btn-secondary me-2" id="forget_btn"
+                data-bs-toggle="tooltip" data-bs-placement="bottom" title="Click to forget">
+          Forget
+        </button>
+        <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Close</button>
       </div>
     </div>
   </div>

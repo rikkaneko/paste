@@ -38,9 +38,12 @@ let paste_modal = {
   expired: null,
   id_copy_btn: null,
   id_copy_btn_icon: null,
+  forget_btn: null,
 };
 
-let saved_modal = null;
+let cached_paste_info = null;
+let show_saved_btn = null;
+let show_qrcode = true;
 
 function validate_url(path) {
   let url;
@@ -74,21 +77,9 @@ function remove_pop_alert() {
 }
 
 function build_paste_modal(paste_info, show_qrcode = true, saved = true, build_only = false) {
-  // Show saved modal
-  if (!!!paste_info && !!!saved_modal) {
-    console.err('Invalid call to build_paste_modal().');
-    return;
-  }
-
-  if (!!!paste_info) {
-    saved_modal.show();
-    return;
-  }
-
   let tooltip = bootstrap.Tooltip.getInstance(paste_modal.id_copy_btn);
 
-  paste_modal.uuid.text(paste_info.link);
-  paste_modal.uuid.prop('href', paste_info.link);
+  paste_modal.uuid.text(paste_info.link.replace(/^https?:\/\//, ''));
   paste_modal.qrcode.prop('src', paste_info.link_qr);
   paste_modal.qrcode.prop('alt', paste_info.link);
   paste_modal.id_copy_btn_icon.addClass('bi-clipboard');
@@ -97,16 +88,27 @@ function build_paste_modal(paste_info, show_qrcode = true, saved = true, build_o
   paste_modal.id_copy_btn.removeClass('btn-success');
   tooltip.setContent({'.tooltip-inner': 'Click to copy'});
 
+  if (saved) {
+    cached_paste_info = paste_info;
+    localStorage.setItem('last_paste', JSON.stringify(paste_info));
+    console.log('Paste saved');
+    show_saved_btn.prop('disabled', false);
+  }
+
   // Hide/Show QRCode
   if (!show_qrcode) paste_modal.qrcode.addClass('d-none');
   else paste_modal.qrcode.removeClass('d-none');
+
+  // Hide/Show Forget button
+  if (!!cached_paste_info) paste_modal.forget_btn.removeClass('d-none');
+  else paste_modal.forget_btn.addClass('d-none');
 
   Object.entries(paste_info).forEach(([key, val]) => {
     if (key.includes('link')) return;
     $(`#paste_info_${key}`).text(val ?? '-');
   });
+
   let modal = new bootstrap.Modal(paste_modal.modal);
-  if (saved) saved_modal = modal;
   if (!build_only) modal.show();
 }
 
@@ -122,6 +124,7 @@ $(function () {
   paste_modal.qrcode = $('#paste_qrcode');
   paste_modal.id_copy_btn = $('#id_copy_button');
   paste_modal.id_copy_btn_icon = $('#id_copy_button_icon');
+  paste_modal.forget_btn = $('#forget_btn');
 
   let file_stat = $('#file_stats');
   let title = $('#paste_title');
@@ -131,16 +134,24 @@ $(function () {
   let upload_button = $('#upload_button');
   let url_validate_result = $('#url_validate_result');
   let tos_btn = $('#tos_btn');
-  let show_saved_btn = $('#show_saved_button');
+  show_saved_btn = $('#show_saved_button');
   let go_btn = $('#go_button');
   let go_id = $('#go_paste_id');
   let view_btn = $('#view_info_button');
+  let show_qrcode_checkbox = $('#show_qrcode_checkbox');
 
   // Enable bootstrap tooltips
   const tooltip_trigger_list = [].slice.call($('[data-bs-toggle="tooltip"]'));
   const tooltip_list = tooltip_trigger_list.map(function (e) {
     return new bootstrap.Tooltip(e);
   });
+
+  // Restore saved paste info
+  cached_paste_info = JSON.parse(localStorage.getItem('last_paste'));
+  if (!!cached_paste_info) {
+    show_saved_btn.prop('disabled', false);
+    console.log('Restored cache paste');
+  }
 
   inputs.file.on('change', function () {
     inputs.file.removeClass('is-invalid');
@@ -205,7 +216,6 @@ $(function () {
     let formdata = new FormData(form);
     const type = formdata.get('paste-type');
     const content = formdata.get('u');
-    const show_qrcode = formdata.get('qrcode') === '1';
 
     inputs[type].trigger('input');
     if (inputs[type].hasClass('is-invalid') || !(!!content?.size || !!content?.length)) {
@@ -251,7 +261,6 @@ $(function () {
         show_pop_alert('Paste created!', 'alert-success');
         pass_input.val('');
         build_paste_modal(paste_info, show_qrcode);
-        show_saved_btn.prop('disabled', false);
       } else {
         show_pop_alert('Unable to create paste', 'alert-warning');
       }
@@ -270,11 +279,11 @@ $(function () {
   });
 
   show_saved_btn.on('click', function () {
-    if (!!!saved_modal) {
+    if (!!!cached_paste_info) {
       show_pop_alert('No saved paste found.', 'alert-warning');
       return;
     }
-    saved_modal.show();
+    build_paste_modal(cached_paste_info, show_qrcode, false);
   });
 
   go_btn.on('click', function () {
@@ -297,7 +306,7 @@ $(function () {
       const res = await fetch(`${endpoint}/${uuid}/settings?${new URLSearchParams({json: '1'})}`);
       if (res.ok) {
         const paste_info = await res.json();
-        build_paste_modal(paste_info, true);
+        build_paste_modal(paste_info, show_qrcode, false);
       } else {
         show_pop_alert('Invalid Paste ID.', 'alert-warning');
       }
@@ -326,6 +335,23 @@ $(function () {
       tooltip.setContent({'.tooltip-inner': 'Copied failed'});
     }
   });
+
+  paste_modal.forget_btn.on('click', function () {
+    let tooltip = bootstrap.Tooltip.getInstance(paste_modal.forget_btn);
+
+    if (!!cached_paste_info) {
+      cached_paste_info = null;
+      localStorage.removeItem('last_paste');
+      console.log('Removed cached paste');
+      tooltip.setContent({'.tooltip-inner': 'Forgotten!'});
+      show_saved_btn.prop('disabled', true);
+    }
+  });
+
+  show_qrcode_checkbox.on('click', function () {
+    show_qrcode = show_qrcode_checkbox.prop('checked');
+  });
+
 
 });
 
