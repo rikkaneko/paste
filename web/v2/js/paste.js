@@ -36,6 +36,8 @@ let paste_modal = {
   qrcode: null,
   title: null,
   expired: null,
+  id_copy_btn: null,
+  id_copy_btn_icon: null,
 };
 
 let saved_modal = null;
@@ -80,10 +82,17 @@ function build_paste_modal(paste_info, show_qrcode = true, saved = true) {
     return;
   }
 
+  let tooltip = bootstrap.Tooltip.getInstance(paste_modal.id_copy_btn);
+
   paste_modal.uuid.text(paste_info.link);
   paste_modal.uuid.prop('href', paste_info.link);
   paste_modal.qrcode.prop('src', paste_info.link_qr);
   paste_modal.qrcode.prop('alt', paste_info.link);
+  paste_modal.id_copy_btn_icon.addClass('bi-clipboard');
+  paste_modal.id_copy_btn_icon.removeClass('bi-check2');
+  paste_modal.id_copy_btn.addClass('btn-primary');
+  paste_modal.id_copy_btn.removeClass('btn-success');
+  tooltip.setContent({'.tooltip-inner': 'Click to copy'});
 
   // Hide/Show QRCode
   if (!show_qrcode) paste_modal.qrcode.addClass('d-none');
@@ -108,6 +117,8 @@ $(function () {
   paste_modal.modal = $('#paste_modal');
   paste_modal.uuid = $('#paste_uuid');
   paste_modal.qrcode = $('#paste_qrcode');
+  paste_modal.id_copy_btn = $('#id_copy_button');
+  paste_modal.id_copy_btn_icon = $('#id_copy_button_icon');
 
   let file_stat = $('#file_stats');
   let title = $('#paste_title');
@@ -284,6 +295,26 @@ $(function () {
     } catch (err) {
       console.log('error', err);
       show_pop_alert(err.message, 'alert-danger');
+    }
+  });
+
+  paste_modal.id_copy_btn.on('click', async function () {
+    const uuid = paste_modal.uuid.text();
+    let tooltip = bootstrap.Tooltip.getInstance(paste_modal.id_copy_btn);
+
+    if (navigator.clipboard) {
+      try {
+        await navigator.clipboard.writeText(uuid);
+        paste_modal.id_copy_btn_icon.removeClass('bi-clipboard');
+        paste_modal.id_copy_btn_icon.addClass('bi-check2');
+        paste_modal.id_copy_btn.removeClass('btn-primary');
+        paste_modal.id_copy_btn.addClass('btn-success');
+        tooltip.setContent({'.tooltip-inner': 'Copied'});
+      } catch (err) {
+        tooltip.setContent({'.tooltip-inner': 'Copied failed'});
+      }
+    } else {
+      tooltip.setContent({'.tooltip-inner': 'Copied failed'});
     }
   });
 
