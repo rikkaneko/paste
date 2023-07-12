@@ -22,7 +22,7 @@ import {sha256} from 'js-sha256';
 import dedent from 'dedent-js';
 
 // Constants
-const SERVICE_URL = 'pb.nekoul.com';
+const SERVICE_URL = 'pb.nekoid.cc';
 const PASTE_WEB_URL_v1 = 'https://raw.githubusercontent.com/rikkaneko/paste/main/web/v1';
 const PASTE_WEB_URL = 'https://raw.githubusercontent.com/rikkaneko/paste/main/web/v2';
 const UUID_LENGTH = 4;
@@ -476,7 +476,7 @@ async function get_paste_info(uuid: string, descriptor: PasteIndexEntry, env: En
   const paste_info = {
     uuid,
     link,
-    link_qr: 'https://qrcode.nekoul.com/?' + new URLSearchParams({q: link, type: 'svg'}),
+    link_qr: 'https://qrcode.nekoid.cc/?' + new URLSearchParams({q: link, type: 'svg'}),
     type: descriptor.type ?? 'paste',
     title: descriptor.title?.trim(),
     mime_type: descriptor.mime_type,
@@ -542,7 +542,7 @@ async function get_paste_info(uuid: string, descriptor: PasteIndexEntry, env: En
   // Console response
   if (need_qr) {
     // Cloudflare currently does not support doing a subrequest to the same zone, use service binding instead
-    const res = await env.QRCODE.fetch('https://qrcode.nekoul.com?' + new URLSearchParams({
+    const res = await env.QRCODE.fetch('https://qrcode.nekoid.cc?' + new URLSearchParams({
       q: link,
       type: 'utf8',
     }));

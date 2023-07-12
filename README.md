@@ -1,7 +1,7 @@
 # Paste
 
 This is a pastebin-like, simple file sharing application targeted to run on Cloudflare Worker.  
-[pb.nekoul.com](http://pb.nekoul.com) is the current deployment of this project.  
+[pb.nekoid.cc](http://pb.nekoid.cc) is the current deployment of this project.  
 The maximum upload file size is limited to **10 MB** and the paste will be kept for **28 days** only by default.  
 *All data may be deleted or expired without any notification and guarantee.*  
 Please **DO NOT** abuse this service.
@@ -52,42 +52,42 @@ i.e., [encrypted store](https://developers.cloudflare.com/workers/platform/envir
 Upload a file (Raw body) with password enabled
 
 ```sh
-$ curl --data-binary @example.txt -H "x-pass: exmaple1234" "https://pb.nekoul.com"
+$ curl --data-binary @example.txt -H "x-pass: exmaple1234" "https://pb.nekoid.cc"
 ```
 
 Upload a file (Formdata) with password enabled
 
 ```shell
-$ curl -F u=@exmaple.txt -F "pass=example1234" "https://pb.nekoul.com"
+$ curl -F u=@exmaple.txt -F "pass=example1234" "https://pb.nekoid.cc"
 ```
 
 Upload command ouput as paste
 
 ```shell
-$ lspci -v | curl -F u=@- 'https://pb.nekoul.com'
+$ lspci -v | curl -F u=@- 'https://pb.nekoid.cc'
 ```
 
 Update a paste with QR code generation of paste link
 
 ```shell
-$ echo "Hello, world!" | curl -F u=@- 'https://pb.nekoul.com?qr=1'
+$ echo "Hello, world!" | curl -F u=@- 'https://pb.nekoid.cc?qr=1'
 ```
 
 Get paste
 
 ```shell
-$ curl https://pb.nekoul.com/uuid
+$ curl https://pb.nekoid.cc/uuid
 ```
 
 Delete paste
 
 ```shell
-$ curl -X DELETE https://pb.nekoul.com/uuid
+$ curl -X DELETE https://pb.nekoid.cc/uuid
 ```
 
 ### **Web**
 
-Use [pb.nekoul.com](https://pb.nekoul.com) to submit HTTP form, as same as `curl`.  
+Use [pb.nekoid.cc](https://pb.nekoid.cc) to submit HTTP form, as same as `curl`.  
 This HTML form currenly only support paste upload.
 
 ## API Specification
@@ -175,6 +175,6 @@ Reference for Amazon S3 can be found in [here](https://docs.aws.amazon.com/Amazo
 
 You are welcome to use my project and depoly your own service.  
 Due to the fact that the `SERVICE_URL` is hard-coded into the `paste.html`,
-you may simply use `Ctrl`+`R` to replace `pb.nekoul.com` with your own service URL.  
+you may simply use `Ctrl`+`R` to replace `pb.nekoid.cc` with your own service URL.  
 
 ### Of course, contribute and report issues are also welcome! \:D

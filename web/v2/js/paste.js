@@ -16,7 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-const endpoint = 'https://pb.nekoul.com';
+const endpoint = 'https://pb.nekoid.cc';
 
 let input_div = {
   file: null,
@@ -292,7 +292,7 @@ $(function () {
       show_pop_alert('Invalid Paste ID.', 'alert-warning');
       return;
     }
-    window.open(`https://pb.nekoul.com/${uuid}`);
+    window.open(`https://pb.nekoid.cc/${uuid}`);
   });
 
   view_btn.on('click', async function () {
