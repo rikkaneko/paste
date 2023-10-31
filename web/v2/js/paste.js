@@ -16,6 +16,8 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+/// <reference path="../../../node_modules/@types/bootstrap/index.d.ts" />
+
 const endpoint = 'https://pb.nekoid.cc';
 
 let input_div = {
@@ -57,13 +59,15 @@ function validate_url(path) {
 
 function show_pop_alert(message, alert_type = 'alert-primary', add_classes = null) {
   remove_pop_alert();
-  $('#alert-container').prepend(jQuery.parseHTML(
+  $('#alert-container').prepend(
+    jQuery.parseHTML(
       `<div class="alert ${alert_type} alert-dismissible position-absolute fade show top-0 start-50 translate-middle-x" 
             style="margin-top: 30px; max-width: 500px; width: 80%" id="pop_alert" role="alert"> \
       <div>${message}</div> \
       <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button> \
-      </div>`,
-  ));
+      </div>`
+    )
+  );
   if (add_classes) {
     $('.alert').addClass(add_classes);
   }
@@ -72,8 +76,7 @@ function show_pop_alert(message, alert_type = 'alert-primary', add_classes = nul
 
 function remove_pop_alert() {
   const alert = $('#pop_alert');
-  if (alert.length)
-    alert.remove();
+  if (alert.length) alert.remove();
 }
 
 function build_paste_modal(paste_info, show_qrcode = true, saved = true, build_only = false) {
@@ -86,7 +89,7 @@ function build_paste_modal(paste_info, show_qrcode = true, saved = true, build_o
   paste_modal.id_copy_btn_icon.removeClass('bi-check2');
   paste_modal.id_copy_btn.addClass('btn-primary');
   paste_modal.id_copy_btn.removeClass('btn-success');
-  tooltip.setContent({'.tooltip-inner': 'Click to copy'});
+  tooltip.setContent({ '.tooltip-inner': 'Click to copy' });
 
   if (saved) {
     cached_paste_info = paste_info;
@@ -100,7 +103,7 @@ function build_paste_modal(paste_info, show_qrcode = true, saved = true, build_o
   else paste_modal.qrcode.removeClass('d-none');
 
   // Hide/Show Forget button
-  if (!!cached_paste_info) paste_modal.forget_btn.removeClass('d-none');
+  if (!cached_paste_info) paste_modal.forget_btn.removeClass('d-none');
   else paste_modal.forget_btn.addClass('d-none');
 
   Object.entries(paste_info).forEach(([key, val]) => {
@@ -148,7 +151,7 @@ $(function () {
 
   // Restore saved paste info
   cached_paste_info = JSON.parse(localStorage.getItem('last_paste'));
-  if (!!cached_paste_info) {
+  if (!cached_paste_info) {
     show_saved_btn.prop('disabled', false);
     console.log('Restored cache paste');
   }
@@ -243,7 +246,7 @@ $(function () {
     // Remove empty entries
     let filtered = new FormData();
     formdata.forEach((val, key) => {
-      if (!!val) filtered.set(key, val);
+      if (!val) filtered.set(key, val);
     });
 
     // Request JSON response
@@ -279,7 +282,7 @@ $(function () {
   });
 
   show_saved_btn.on('click', function () {
-    if (!!!cached_paste_info) {
+    if (!cached_paste_info) {
       show_pop_alert('No saved paste found.', 'alert-warning');
       return;
     }
@@ -303,7 +306,7 @@ $(function () {
     }
 
     try {
-      const res = await fetch(`${endpoint}/${uuid}/settings?${new URLSearchParams({json: '1'})}`);
+      const res = await fetch(`${endpoint}/${uuid}/settings?${new URLSearchParams({ json: '1' })}`);
       if (res.ok) {
         const paste_info = await res.json();
         build_paste_modal(paste_info, show_qrcode, false);
@@ -327,23 +330,23 @@ $(function () {
         paste_modal.id_copy_btn_icon.addClass('bi-check2');
         paste_modal.id_copy_btn.removeClass('btn-primary');
         paste_modal.id_copy_btn.addClass('btn-success');
-        tooltip.setContent({'.tooltip-inner': 'Copied'});
+        tooltip.setContent({ '.tooltip-inner': 'Copied' });
       } catch (err) {
-        tooltip.setContent({'.tooltip-inner': 'Copied failed'});
+        tooltip.setContent({ '.tooltip-inner': 'Copied failed' });
       }
     } else {
-      tooltip.setContent({'.tooltip-inner': 'Copied failed'});
+      tooltip.setContent({ '.tooltip-inner': 'Copied failed' });
     }
   });
 
   paste_modal.forget_btn.on('click', function () {
     let tooltip = bootstrap.Tooltip.getInstance(paste_modal.forget_btn);
 
-    if (!!cached_paste_info) {
+    if (!cached_paste_info) {
       cached_paste_info = null;
       localStorage.removeItem('last_paste');
       console.log('Removed cached paste');
-      tooltip.setContent({'.tooltip-inner': 'Forgotten!'});
+      tooltip.setContent({ '.tooltip-inner': 'Forgotten!' });
       show_saved_btn.prop('disabled', true);
     }
   });
@@ -351,12 +354,10 @@ $(function () {
   show_qrcode_checkbox.on('click', function () {
     show_qrcode = show_qrcode_checkbox.prop('checked');
   });
-
-
 });
 
 function select_input_type(name) {
-  Object.keys(input_div).forEach(key => {
+  Object.keys(input_div).forEach((key) => {
     input_div[key].collapse('hide');
     inputs[key].prop('disabled', true);
   });
