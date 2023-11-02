@@ -103,7 +103,7 @@ function build_paste_modal(paste_info, show_qrcode = true, saved = true, build_o
   else paste_modal.qrcode.removeClass('d-none');
 
   // Hide/Show Forget button
-  if (!cached_paste_info) paste_modal.forget_btn.removeClass('d-none');
+  if (cached_paste_info) paste_modal.forget_btn.removeClass('d-none');
   else paste_modal.forget_btn.addClass('d-none');
 
   Object.entries(paste_info).forEach(([key, val]) => {
@@ -151,7 +151,7 @@ $(function () {
 
   // Restore saved paste info
   cached_paste_info = JSON.parse(localStorage.getItem('last_paste'));
-  if (!cached_paste_info) {
+  if (cached_paste_info) {
     show_saved_btn.prop('disabled', false);
     console.log('Restored cache paste');
   }
@@ -246,7 +246,7 @@ $(function () {
     // Remove empty entries
     let filtered = new FormData();
     formdata.forEach((val, key) => {
-      if (!val) filtered.set(key, val);
+      if (val) filtered.set(key, val);
     });
 
     // Request JSON response
@@ -342,7 +342,7 @@ $(function () {
   paste_modal.forget_btn.on('click', function () {
     let tooltip = bootstrap.Tooltip.getInstance(paste_modal.forget_btn);
 
-    if (!cached_paste_info) {
+    if (cached_paste_info) {
       cached_paste_info = null;
       localStorage.removeItem('last_paste');
       console.log('Removed cached paste');
