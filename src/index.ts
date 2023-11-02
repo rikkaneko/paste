@@ -16,15 +16,16 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import {AwsClient} from 'aws4fetch';
-import {customAlphabet} from 'nanoid';
-import {sha256} from 'js-sha256';
+import { AwsClient } from 'aws4fetch';
+import { customAlphabet } from 'nanoid';
+import { sha256 } from 'js-sha256';
 import dedent from 'dedent-js';
+import { PasteIndexEntry } from './types';
 
 // Constants
 const SERVICE_URL = 'pb.nekoid.cc';
-const PASTE_WEB_URL_v1 = 'https://raw.githubusercontent.com/rikkaneko/paste/main/web/v1';
-const PASTE_WEB_URL = 'https://raw.githubusercontent.com/rikkaneko/paste/main/web/v2';
+const PASTE_WEB_URL_v1 = 'https://raw.githubusercontent.com/rikkaneko/paste/main/static/v1';
+const PASTE_WEB_URL = 'https://raw.githubusercontent.com/rikkaneko/paste/main/static/v2';
 const UUID_LENGTH = 4;
 
 export interface Env {
@@ -35,23 +36,20 @@ export interface Env {
   ENDPOINT: string;
 }
 
-const gen_id = customAlphabet(
-    '1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz', UUID_LENGTH);
+const gen_id = customAlphabet('1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz', UUID_LENGTH);
 
 export default {
-  async fetch(
-      request: Request,
-      env: Env,
-      ctx: ExecutionContext,
-  ): Promise<Response> {
-    const {url, method, headers} = request;
-    const {pathname, searchParams} = new URL(url);
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    const { url, method, headers } = request;
+    const { pathname, searchParams } = new URL(url);
     const path = pathname.replace(/\/+$/, '') || '/';
     let cache = caches.default;
 
     const agent = headers.get('user-agent') ?? '';
     // Detect if request from browsers
-    const is_browser = ['Chrome', 'Mozilla', 'AppleWebKit', 'Safari', 'Gecko', 'Chromium'].some(v => agent.includes(v));
+    const is_browser = ['Chrome', 'Mozilla', 'AppleWebKit', 'Safari', 'Gecko', 'Chromium'].some((v) =>
+      agent.includes(v)
+    );
 
     const s3 = new AwsClient({
       accessKeyId: env.AWS_ACCESS_KEY_ID,
@@ -200,10 +198,12 @@ export default {
 
           // Check password rules
           if (password && !check_password_rules(password)) {
-            return new Response('Invalid password. ' +
-                'Password must contain alphabets and digits only, and has a length of 4 or more.', {
-              status: 422,
-            });
+            return new Response(
+              'Invalid password. ' + 'Password must contain alphabets and digits only, and has a length of 4 or more.',
+              {
+                status: 422,
+              }
+            );
           }
 
           // Check request.body size <= 25MB
@@ -239,16 +239,14 @@ export default {
             };
 
             // Key will be expired after 28 day if unmodified
-            ctx.waitUntil(env.PASTE_INDEX.put(uuid, JSON.stringify(descriptor), {expirationTtl: 2419200}));
+            ctx.waitUntil(env.PASTE_INDEX.put(uuid, JSON.stringify(descriptor), { expirationTtl: 2419200 }));
             return await get_paste_info(uuid, descriptor, env, is_browser, need_qrcode, reply_json);
           } else {
             return new Response('Unable to upload the paste.\n', {
               status: 500,
             });
           }
-
       }
-
     } else if (path.length >= UUID_LENGTH + 1) {
       // RegExpr to match /<uuid>/<option>
       const found = path.match('/(?<uuid>[A-z0-9]+)(?:/(?<option>[A-z]+))?$');
@@ -258,7 +256,7 @@ export default {
         });
       }
       // @ts-ignore
-      const {uuid, option} = found.groups;
+      const { uuid, option } = found.groups;
       // UUID format: [A-z0-9]{UUID_LENGTH}
       if (uuid.length !== UUID_LENGTH) {
         return new Response('Invalid UUID.\n', {
@@ -289,11 +287,10 @@ export default {
             });
           }
         }
-
       }
 
       switch (method) {
-          // Fetch the paste by uuid
+        // Fetch the paste by uuid
         case 'GET': {
           // Check password if needed
           if (descriptor.password !== undefined) {
@@ -337,9 +334,11 @@ export default {
               });
             }
             descriptor.read_count_remain--;
-            ctx.waitUntil(env.PASTE_INDEX.put(uuid, JSON.stringify(descriptor), {
-              expiration: descriptor.last_modified / 1000 + 2419200,
-            }));
+            ctx.waitUntil(
+              env.PASTE_INDEX.put(uuid, JSON.stringify(descriptor), {
+                expiration: descriptor.last_modified / 1000 + 2419200,
+              })
+            );
           }
 
           // Enable CF cache for authorized request
@@ -370,20 +369,22 @@ export default {
             }
 
             res.headers.set('cache-control', 'public, max-age=18000');
-            res.headers.set('content-disposition',
-                `inline; filename="${encodeURIComponent(descriptor.title ?? uuid)}"`);
+            res.headers.set(
+              'content-disposition',
+              `inline; filename="${encodeURIComponent(descriptor.title ?? uuid)}"`
+            );
 
-            if (descriptor.mime_type)
-              res.headers.set('content-type', descriptor.mime_type);
+            if (descriptor.mime_type) res.headers.set('content-type', descriptor.mime_type);
             // Let the browser guess the content
             else res.headers.delete('content-type');
 
             // Handle option
             if (option === 'raw') res.headers.delete('content-type');
             else if (option === 'download')
-              res.headers.set('content-disposition',
-                  `attachment; filename="${encodeURIComponent(descriptor.title ?? uuid)}"`);
-
+              res.headers.set(
+                'content-disposition',
+                `attachment; filename="${encodeURIComponent(descriptor.title ?? uuid)}"`
+              );
             // Link redirection
             else if (descriptor.type === 'link' || option === 'link') {
               const content = await res.clone().arrayBuffer();
@@ -414,12 +415,12 @@ export default {
           }
 
           // Cache hit
-          let {readable, writable} = new TransformStream();
+          let { readable, writable } = new TransformStream();
           res.body!.pipeTo(writable);
           return new Response(readable, res);
         }
 
-          // Delete paste by uuid
+        // Delete paste by uuid
         case 'DELETE': {
           if (descriptor.editable !== undefined && !descriptor.editable) {
             return new Response('This paste is immutable.\n', {
@@ -468,15 +469,21 @@ export default {
   },
 };
 
-async function get_paste_info(uuid: string, descriptor: PasteIndexEntry, env: Env,
-                              use_html: boolean = true, need_qr: boolean = false, reply_json = false): Promise<Response> {
+async function get_paste_info(
+  uuid: string,
+  descriptor: PasteIndexEntry,
+  env: Env,
+  use_html: boolean = true,
+  need_qr: boolean = false,
+  reply_json = false
+): Promise<Response> {
   const created = new Date(descriptor.last_modified);
   const expired = new Date(descriptor.last_modified + 2419200000);
   const link = `https://${SERVICE_URL}/${uuid}`;
   const paste_info = {
     uuid,
     link,
-    link_qr: 'https://qrcode.nekoid.cc/?' + new URLSearchParams({q: link, type: 'svg'}),
+    link_qr: 'https://qrcode.nekoid.cc/?' + new URLSearchParams({ q: link, type: 'svg' }),
     type: descriptor.type ?? 'paste',
     title: descriptor.title?.trim(),
     mime_type: descriptor.mime_type,
@@ -507,8 +514,13 @@ async function get_paste_info(uuid: string, descriptor: PasteIndexEntry, env: En
     mime-type: ${paste_info.mime_type ?? '-'}
     size: ${paste_info.size} bytes (${paste_info.human_readable_size})
     password: ${paste_info.password}
-    remaining read count: ${paste_info.read_count_remain !== undefined ?
-      paste_info.read_count_remain ? paste_info.read_count_remain : `0 (expired)` : '-'}
+    remaining read count: ${
+      paste_info.read_count_remain !== undefined
+        ? paste_info.read_count_remain
+          ? paste_info.read_count_remain
+          : `0 (expired)`
+        : '-'
+    }
     created at ${paste_info.created}
     expired at ${paste_info.expired}
     `;
@@ -525,8 +537,12 @@ async function get_paste_info(uuid: string, descriptor: PasteIndexEntry, env: En
         <body>
           <pre style="word-wrap: break-word; white-space: pre-wrap;
             font-family: 'Fira Mono', monospace; font-size: 16px;">${content}</pre>
-          ${(need_qr) ? `<img src="${paste_info.link_qr}"
-            alt="${link}" style="max-width: 280px">` : ''} 
+          ${
+            need_qr
+              ? `<img src="${paste_info.link_qr}"
+            alt="${link}" style="max-width: 280px">`
+              : ''
+          } 
         </body>
       </html>
     `;
@@ -542,10 +558,13 @@ async function get_paste_info(uuid: string, descriptor: PasteIndexEntry, env: En
   // Console response
   if (need_qr) {
     // Cloudflare currently does not support doing a subrequest to the same zone, use service binding instead
-    const res = await env.QRCODE.fetch('https://qrcode.nekoid.cc?' + new URLSearchParams({
-      q: link,
-      type: 'utf8',
-    }));
+    const res = await env.QRCODE.fetch(
+      'https://qrcode.nekoid.cc?' +
+        new URLSearchParams({
+          q: link,
+          type: 'utf8',
+        })
+    );
 
     if (res.ok) {
       const qrcode = await res.text();
@@ -576,7 +595,7 @@ function get_basic_auth(headers: Headers): [string, string] | null {
       return null;
     }
     // Decode base64 to string (UTF-8)
-    const buffer = Uint8Array.from(atob(encoded), character => character.charCodeAt(0));
+    const buffer = Uint8Array.from(atob(encoded), (character) => character.charCodeAt(0));
     const decoded = new TextDecoder().decode(buffer).normalize();
     const index = decoded.indexOf(':');
 
@@ -586,7 +605,6 @@ function get_basic_auth(headers: Headers): [string, string] | null {
     }
 
     return [decoded.slice(0, index), decoded.slice(index + 1)];
-
   } else {
     return null;
   }
@@ -602,7 +620,7 @@ function to_human_readable_size(bytes: number): string {
 }
 
 // Proxy URI (limit to html/js/css)
-async function proxy_uri(path: string, cf: RequestInitCfProperties = {cacheEverything: true}) {
+async function proxy_uri(path: string, cf: RequestInitCfProperties = { cacheEverything: true }) {
   // Fix content type
   let file_type = 'text/plain';
   if (path.endsWith('.js')) file_type = 'application/javascript';
@@ -611,7 +629,7 @@ async function proxy_uri(path: string, cf: RequestInitCfProperties = {cacheEvery
 
   return await fetch(path, {
     cf,
-  }).then(value => {
+  }).then((value) => {
     return new Response(value.body, {
       // Add the correct content-type to response header
       headers: {
@@ -620,15 +638,4 @@ async function proxy_uri(path: string, cf: RequestInitCfProperties = {cacheEvery
       },
     });
   });
-}
-
-interface PasteIndexEntry {
-  title?: string,
-  mime_type?: string,
-  last_modified: number,
-  size: number,
-  password?: string,
-  editable?: boolean, // Default: False (unsupported)
-  read_count_remain?: number
-  type?: string;
 }
