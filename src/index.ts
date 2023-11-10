@@ -20,21 +20,14 @@ import { AwsClient } from 'aws4fetch';
 import { customAlphabet } from 'nanoid';
 import { sha256 } from 'js-sha256';
 import dedent from 'dedent-js';
-import { PasteIndexEntry } from './types';
+import { Env, PasteIndexEntry } from './types';
+import { serve_static } from './proxy';
 
 // Constants
 const SERVICE_URL = 'pb.nekoid.cc';
 const PASTE_WEB_URL_v1 = 'https://raw.githubusercontent.com/rikkaneko/paste/main/static/v1';
 const PASTE_WEB_URL = 'https://raw.githubusercontent.com/rikkaneko/paste/main/static/v2';
 const UUID_LENGTH = 4;
-
-export interface Env {
-  PASTE_INDEX: KVNamespace;
-  QRCODE: ServiceWorkerGlobalScope;
-  AWS_ACCESS_KEY_ID: string;
-  AWS_SECRET_ACCESS_KEY: string;
-  ENDPOINT: string;
-}
 
 const gen_id = customAlphabet('1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz', UUID_LENGTH);
 
@@ -43,6 +36,7 @@ export default {
     const { url, method, headers } = request;
     const { pathname, searchParams } = new URL(url);
     const path = pathname.replace(/\/+$/, '') || '/';
+    const match_etag = headers.get('If-None-Match') || undefined;
     let cache = caches.default;
 
     const agent = headers.get('user-agent') ?? '';
@@ -67,18 +61,18 @@ export default {
     }
 
     if (path === '/v1' && method == 'GET') {
-      return await proxy_uri(PASTE_WEB_URL_v1 + '/paste.html');
+      return await serve_static(PASTE_WEB_URL_v1 + '/paste.html', headers);
     }
 
     if (/\/(js|css)\/.*$/.test(path) && method == 'GET') {
-      return await proxy_uri(PASTE_WEB_URL + path);
+      return await serve_static(PASTE_WEB_URL + path, headers);
     }
 
     if (path === '/') {
       switch (method) {
         case 'GET': {
           // Fetch the HTML for uploading text/file
-          return await proxy_uri(PASTE_WEB_URL + '/paste.html');
+          return await serve_static(PASTE_WEB_URL + '/paste.html', headers);
         }
 
         // Create new paste
@@ -343,14 +337,32 @@ export default {
 
           // Enable CF cache for authorized request
           // Match in existing cache
-          let res = await cache.match(request.url);
+          let res = await cache.match(
+            new Request(`https://${SERVICE_URL}/${uuid}`, {
+              method: 'GET',
+              headers: match_etag
+                ? {
+                    // ETag to cache file
+                    'if-none-match': match_etag,
+                  }
+                : undefined,
+            })
+          );
           if (res === undefined) {
             // Fetch form origin if not hit cache
             let origin = await s3.fetch(`${env.ENDPOINT}/${uuid}`, {
               method: 'GET',
+              headers: match_etag
+                ? {
+                    'if-none-match': match_etag,
+                  }
+                : undefined,
             });
 
-            res = new Response(origin.body);
+            // Reserve ETag header
+            res = new Response(origin.body, { status: origin.status });
+            const etag = origin.headers.get('etag');
+            if (etag) res.headers.append('etag', etag);
 
             if (res.status == 404) {
               // UUID exists in index but not found in remote object storage service, probably expired
@@ -361,7 +373,7 @@ export default {
               return new Response('Paste expired.\n', {
                 status: 410,
               });
-            } else if (!res.ok) {
+            } else if (!res.ok && res.status !== 304) {
               // Other error
               return new Response('Internal server error.\n', {
                 status: 500,
@@ -410,13 +422,15 @@ export default {
 
             // res.body cannot be read twice
             // Do not block when writing to cache
-            ctx.waitUntil(cache.put(url, res.clone()));
+            if (res.ok) ctx.waitUntil(cache.put(url, res.clone()));
             return res;
           }
 
           // Cache hit
+          // Matched Etag, no body
+          if (res.status == 304) return res;
           let { readable, writable } = new TransformStream();
-          res.body!.pipeTo(writable);
+          res.body?.pipeTo(writable);
           return new Response(readable, res);
         }
 

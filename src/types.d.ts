@@ -8,3 +8,11 @@ export interface PasteIndexEntry {
   read_count_remain?: number;
   type?: string;
 }
+
+export interface Env {
+  PASTE_INDEX: KVNamespace;
+  QRCODE: ServiceWorkerGlobalScope;
+  AWS_ACCESS_KEY_ID: string;
+  AWS_SECRET_ACCESS_KEY: string;
+  ENDPOINT: string;
+}
