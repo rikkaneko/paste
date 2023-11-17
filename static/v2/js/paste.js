@@ -82,7 +82,7 @@ function remove_pop_alert() {
 function build_paste_modal(paste_info, show_qrcode = true, saved = true, build_only = false) {
   let tooltip = bootstrap.Tooltip.getInstance(paste_modal.id_copy_btn);
 
-  paste_modal.uuid.text(paste_info.link.replace(/^https?:\/\//, ''));
+  paste_modal.uuid.text(paste_info.link);
   paste_modal.qrcode.prop('src', paste_info.link_qr);
   paste_modal.qrcode.prop('alt', paste_info.link);
   paste_modal.id_copy_btn_icon.addClass('bi-clipboard');
