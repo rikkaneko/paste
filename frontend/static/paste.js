@@ -16,9 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-/// <reference path="../../../node_modules/@types/bootstrap/index.d.ts" />
-
-const endpoint = 'https://pb.nekoid.cc';
+/// <reference path="../../node_modules/@types/bootstrap/index.d.ts" />
 
 let input_div = {
   file: null,
@@ -254,7 +252,7 @@ $(function () {
     upload_button.prop('disabled', true);
     upload_button.text('Uploading...');
     try {
-      const res = await fetch(endpoint, {
+      const res = await fetch('/', {
         method: 'POST',
         body: filtered,
       });
@@ -295,7 +293,7 @@ $(function () {
       show_pop_alert('Invalid Paste ID.', 'alert-warning');
       return;
     }
-    window.open(`https://pb.nekoid.cc/${uuid}`);
+    window.open(`/${uuid}`);
   });
 
   view_btn.on('click', async function () {
@@ -306,7 +304,7 @@ $(function () {
     }
 
     try {
-      const res = await fetch(`${endpoint}/${uuid}/settings?${new URLSearchParams({ json: '1' })}`);
+      const res = await fetch(`/${uuid}/settings?${new URLSearchParams({ json: '1' })}`);
       if (res.ok) {
         const paste_info = await res.json();
         build_paste_modal(paste_info, show_qrcode, false);

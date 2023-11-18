@@ -56,7 +56,7 @@ router.get('/favicon.ico', () => {
 });
 
 // Web script and style file
-router.get('/(css|js)/*', (request) => {
+router.get('/static/*', (request) => {
   const { url } = request;
   const { pathname } = new URL(url);
   const path = pathname.replace(/\/+$/, '') || '/';
