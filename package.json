@@ -1,7 +1,9 @@
 {
   "name": "paste",
-  "version": "1.3.1",
+  "version": "1.4",
+  "license": "LGPL-3.0-or-later",
   "scripts": {
+    "dev": "wrangler dev",
     "publish": "wrangler deploy",
     "format": "prettier --write .",
     "lint": "eslint . --color --cache -f friendly --max-warnings 10"
@@ -9,6 +11,7 @@
   "dependencies": {
     "aws4fetch": "^1.0.17",
     "dedent-js": "^1.0.1",
+    "itty-router": "^4.0.23",
     "js-sha256": "^0.10.1",
     "nanoid": "^5.0.2"
   },

@@ -1,3 +1,10 @@
+import { IRequest } from 'itty-router';
+
+export type ERequest = {
+  is_browser: boolean;
+  // match_etag?: string;
+} & IRequest;
+
 export interface PasteIndexEntry {
   title?: string;
   mime_type?: string;
