@@ -14,6 +14,8 @@ export interface PasteIndexEntry {
   editable?: boolean; // Default: False (unsupported)
   read_count_remain?: number;
   type?: string;
+  upload_completed?: boolean;
+  sha256_hash?: string;
 }
 
 export interface Env {
@@ -21,5 +23,8 @@ export interface Env {
   QRCODE: ServiceWorkerGlobalScope;
   AWS_ACCESS_KEY_ID: string;
   AWS_SECRET_ACCESS_KEY: string;
+  LARGE_AWS_ACCESS_KEY_ID?: string;
+  LARGE_AWS_SECRET_ACCESS_KEY?: string;
   ENDPOINT: string;
+  LARGE_ENDPOINT: string;
 }

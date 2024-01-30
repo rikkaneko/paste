@@ -17,13 +17,11 @@
  */
 
 import { AwsClient } from 'aws4fetch';
-import { customAlphabet } from 'nanoid';
 import { sha256 } from 'js-sha256';
 import { Router, error } from 'itty-router';
-import { ERequest } from './types';
-import { Env, PasteIndexEntry } from './types';
+import { ERequest, Env, PasteIndexEntry } from './types';
 import { serve_static } from './proxy';
-import { check_password_rules, get_paste_info, get_basic_auth } from './utils';
+import { check_password_rules, get_paste_info, get_basic_auth, gen_id } from './utils';
 import { UUID_LENGTH, PASTE_WEB_URL, SERVICE_URL } from './constant';
 
 const gen_id = customAlphabet('1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz', UUID_LENGTH);
@@ -140,14 +138,17 @@ router.post('/', async (request, env, ctx) => {
     paste_type = headers.get('x-paste-type') || undefined;
     need_qrcode = headers.get('x-paste-qr') === '1';
     reply_json = headers.get('x-json') === '1';
-    const count = headers.get('x-paste-read-limit') || '';
-    const n = parseInt(count);
-    if (isNaN(n) || n <= 0) {
-      return new Response('x-paste-read-limit must be a positive integer.\n', {
-        status: 422,
-      });
+    const count = headers.get('x-paste-read-limit') || undefined;
+    if (count) {
+      const n = parseInt(count);
+      if (isNaN(n) || n <= 0) {
+        return new Response('x-paste-read-limit must be a positive integer.\n', {
+          status: 422,
+        });
+      }
+      read_limit = n;
     }
-    read_limit = n;
+
     buffer = await request.arrayBuffer();
   }
 
@@ -370,12 +371,8 @@ router.get('/:uuid/:option?', async (request, env, ctx) => {
     // Let the browser guess the content
     else res.headers.delete('content-type');
 
-    // Handle option
-    if (option === 'raw') res.headers.delete('content-type');
-    else if (option === 'download')
-      res.headers.set('content-disposition', `attachment; filename="${encodeURIComponent(descriptor.title ?? uuid)}"`);
     // Link redirection
-    else if (descriptor.type === 'link' || option === 'link') {
+    if (descriptor.type === 'link') {
       const content = await res.clone().arrayBuffer();
       try {
         const href = new TextDecoder().decode(content);
@@ -400,6 +397,10 @@ router.get('/:uuid/:option?', async (request, env, ctx) => {
     // res.body cannot be read twice
     // Do not block when writing to cache
     if (res.ok) ctx.waitUntil(cache.put(req_key, res.clone()));
+    // Handle option
+    if (option === 'raw') res.headers.delete('content-type');
+    else if (option === 'download')
+      res.headers.set('content-disposition', `attachment; filename="${encodeURIComponent(descriptor.title ?? uuid)}"`);
     return res;
   }
 
@@ -408,7 +409,12 @@ router.get('/:uuid/:option?', async (request, env, ctx) => {
   if (res.status == 304) return res;
   let { readable, writable } = new TransformStream();
   res.body?.pipeTo(writable);
-  return new Response(readable, res);
+  const nres = new Response(readable, res);
+  // Handle option
+  if (option === 'raw') nres.headers.delete('content-type');
+  else if (option === 'download')
+    nres.headers.set('content-disposition', `attachment; filename="${encodeURIComponent(descriptor.title ?? uuid)}"`);
+  return nres;
 });
 
 // Update paste metadata

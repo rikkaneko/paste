@@ -17,8 +17,11 @@
  */
 
 import dedent from 'dedent-js';
-import { SERVICE_URL } from './constant';
+import { customAlphabet } from 'nanoid';
+import { SERVICE_URL, UUID_LENGTH } from './constant';
 import { PasteIndexEntry, Env } from './types';
+
+export const gen_id = customAlphabet('1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz', UUID_LENGTH);
 
 export async function get_paste_info(
   uuid: string,
