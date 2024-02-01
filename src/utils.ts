@@ -32,7 +32,7 @@ export async function get_paste_info(
   reply_json = false
 ): Promise<Response> {
   const created = new Date(descriptor.last_modified);
-  const expired = new Date(descriptor.last_modified + 2419200000);
+  const expired = new Date(descriptor.expiration ?? descriptor.last_modified + 2419200000);
   const link = `https://${SERVICE_URL}/${uuid}`;
   const paste_info = {
     uuid,
@@ -47,6 +47,7 @@ export async function get_paste_info(
     read_count_remain: descriptor.read_count_remain,
     created: created.toISOString(),
     expired: expired.toISOString(),
+    update_completed: descriptor.upload_completed ?? undefined, // only for large_paste
   };
 
   // Reply with JSON

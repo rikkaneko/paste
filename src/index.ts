@@ -19,12 +19,11 @@
 import { AwsClient } from 'aws4fetch';
 import { sha256 } from 'js-sha256';
 import { Router, error } from 'itty-router';
-import { ERequest, Env, PasteIndexEntry } from './types';
+import { ERequest, Env, PasteIndexEntry, PASTE_TYPES } from './types';
 import { serve_static } from './proxy';
 import { check_password_rules, get_paste_info, get_basic_auth, gen_id } from './utils';
 import { UUID_LENGTH, PASTE_WEB_URL, SERVICE_URL } from './constant';
-
-const gen_id = customAlphabet('1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz', UUID_LENGTH);
+import { get_presign_url, router as large_upload } from './v2/large_upload';
 
 const router = Router<ERequest, [Env, ExecutionContext]>();
 
@@ -82,6 +81,7 @@ router.post('/', async (request, env, ctx) => {
     const data: File | string | any = formdata.get('u');
     const type = formdata.get('paste-type');
     const file_title = formdata.get('title');
+    const file_meta = formdata.get('mime-type');
     if (data === null) {
       return new Response('Invalid request.\n', {
         status: 422,
@@ -99,7 +99,15 @@ router.post('/', async (request, env, ctx) => {
     }
 
     if (typeof file_title === 'string') title = file_title;
-    if (typeof type === 'string') paste_type = type;
+    if (typeof file_meta === 'string') mime_type = file_meta;
+    if (typeof type === 'string') {
+      if (type === 'paste' || type === 'link') paste_type = type;
+      else {
+        return new Response('paste-type can only be "paste" or "link".\n', {
+          status: 422,
+        });
+      }
+    }
 
     // Set password
     const pass = formdata.get('pass');
@@ -129,8 +137,6 @@ router.post('/', async (request, env, ctx) => {
     if (typeof json === 'string' && json === '1') {
       reply_json = true;
     }
-
-    // Paste API v2
   } else {
     title = headers.get('x-paste-title') || undefined;
     mime_type = headers.get('x-paste-content-type') || undefined;
@@ -155,24 +161,6 @@ router.post('/', async (request, env, ctx) => {
   // Check if qrcode generation needed
   if (request.query?.qr === '1') {
     need_qrcode = true;
-  }
-
-  // Validate paste type parameter
-  switch (paste_type) {
-    case 'link':
-      mime_type = 'text/x-uri';
-      paste_type = 'link';
-      break;
-
-    case 'paste':
-    case undefined:
-      paste_type = undefined;
-      break;
-
-    default:
-      return new Response('Unknown paste type.\n', {
-        status: 422,
-      });
   }
 
   // Check file title rules
@@ -216,6 +204,17 @@ router.post('/', async (request, env, ctx) => {
     body: buffer,
   });
 
+  if (paste_type === 'link') {
+    mime_type = 'text/x-uri';
+  }
+
+  // Validate paste type parameter
+  if (paste_type !== 'paste' && paste_type !== 'link') {
+    return new Response('Unknown paste type.\n', {
+      status: 422,
+    });
+  }
+
   if (res.ok) {
     // Upload success
     const descriptor: PasteIndexEntry = {
@@ -237,6 +236,9 @@ router.post('/', async (request, env, ctx) => {
     });
   }
 });
+
+// Handle large upload (> 25MB)
+router.all('/v2/large_upload/*', large_upload.handle);
 
 // Fetch paste by uuid [4-digit UUID]
 router.get('/:uuid/:option?', async (request, env, ctx) => {
@@ -312,6 +314,24 @@ router.get('/:uuid/:option?', async (request, env, ctx) => {
     );
   }
 
+  // New added in 2.0
+  // Handle large_paste
+  if (descriptor.type === 'large_paste') {
+    if (!descriptor.upload_completed) {
+      return new Response('This paste is not yet finalized.\n', {
+        status: 400,
+      });
+    }
+
+    const signed_url = await get_presign_url(uuid, descriptor, env);
+    return new Response(null, {
+      status: 301,
+      headers: {
+        location: signed_url,
+      },
+    });
+  }
+
   // Enable CF cache for authorized request
   // Match in existing cache
   const cache = caches.default;
@@ -365,7 +385,7 @@ router.get('/:uuid/:option?', async (request, env, ctx) => {
     }
 
     res.headers.set('cache-control', 'public, max-age=18000');
-    res.headers.set('content-disposition', `inline; filename="${encodeURIComponent(descriptor.title ?? uuid)}"`);
+    res.headers.set('content-disposition', `inline; filename*=UTF-8''${encodeURIComponent(descriptor.title ?? uuid)}`);
 
     if (descriptor.mime_type) res.headers.set('content-type', descriptor.mime_type);
     // Let the browser guess the content
@@ -400,7 +420,10 @@ router.get('/:uuid/:option?', async (request, env, ctx) => {
     // Handle option
     if (option === 'raw') res.headers.delete('content-type');
     else if (option === 'download')
-      res.headers.set('content-disposition', `attachment; filename="${encodeURIComponent(descriptor.title ?? uuid)}"`);
+      res.headers.set(
+        'content-disposition',
+        `attachment; filename*=UTF-8''${encodeURIComponent(descriptor.title ?? uuid)}`
+      );
     return res;
   }
 
@@ -413,7 +436,10 @@ router.get('/:uuid/:option?', async (request, env, ctx) => {
   // Handle option
   if (option === 'raw') nres.headers.delete('content-type');
   else if (option === 'download')
-    nres.headers.set('content-disposition', `attachment; filename="${encodeURIComponent(descriptor.title ?? uuid)}"`);
+    nres.headers.set(
+      'content-disposition',
+      `attachment; filename*=UTF-8''${encodeURIComponent(descriptor.title ?? uuid)}`
+    );
   return nres;
 });
 
@@ -466,11 +492,21 @@ router.delete('/:uuid', async (request, env, ctx) => {
   }
 
   const cache = caches.default;
+  // Distinguish the endpoint for large_paste and normal paste
+  if (descriptor.type === 'large_paste') {
+    if (!env.LARGE_AWS_ACCESS_KEY_ID || !env.LARGE_AWS_SECRET_ACCESS_KEY || !env.LARGE_ENDPOINT) {
+      return new Response('Unsupported paste type.\n', {
+        status: 501,
+      });
+    }
+  }
+  const endpoint = descriptor.type === 'large_paste' ? env.LARGE_DOWNLOAD_ENDPOINT : env.ENDPOINT;
   const s3 = new AwsClient({
-    accessKeyId: env.AWS_ACCESS_KEY_ID,
-    secretAccessKey: env.AWS_SECRET_ACCESS_KEY,
+    accessKeyId: descriptor.type === 'large_paste' ? env.LARGE_AWS_ACCESS_KEY_ID! : env.AWS_ACCESS_KEY_ID,
+    secretAccessKey: descriptor.type === 'large_paste' ? env.LARGE_AWS_SECRET_ACCESS_KEY! : env.AWS_SECRET_ACCESS_KEY,
+    service: 's3', // required
   });
-  let res = await s3.fetch(`${env.ENDPOINT}/${uuid}`, {
+  let res = await s3.fetch(`${endpoint}/${uuid}`, {
     method: 'DELETE',
   });
 
