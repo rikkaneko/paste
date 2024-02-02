@@ -189,11 +189,11 @@ Generate the presigned URL for upload large paste to the given S3 endpoint `LARG
 
 The `file-size` and `file-sha256sum` field is required.
 
-### POST /v2/large_upload/complete/<uuid>
+### POST /v2/large_upload/complete/\<uuid\>
 
 Finialize the paste created from `/v2/large_upload/create`.
 
-### GET /v2/large_upload/<uuid>
+### GET /v2/large_upload/\<uuid\>
 
 Generate the presigned URL for upload large paste to the given S3 endpoint `LARGE_DOWNLOAD_ENDPOINT` using HTTP `GET` request.
 

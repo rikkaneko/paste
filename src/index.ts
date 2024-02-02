@@ -27,6 +27,22 @@ import { get_presign_url, router as large_upload } from './v2/large_upload';
 
 const router = Router<ERequest, [Env, ExecutionContext]>();
 
+// Handle preflighted CORS request
+router.options('*', (request) => {
+  const url = new URL(request.url);
+  // Allow all subdomain of nekoid.cc
+  if (url.hostname.endsWith('nekoid.cc')) {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        'Access-Control-Allow-Origin': url.origin,
+        'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
+        'Vary': 'Origin',
+      }
+    })
+  }
+});
+
 // Shared common properties to all route
 router.all('*', (request) => {
   // Detect if request from browsers
@@ -530,5 +546,18 @@ router.all('*', () => {
 });
 
 export default {
-  fetch: (req: Request, env: Env, ctx: ExecutionContext) => router.handle(req, env, ctx).catch(error),
+  fetch: (req: Request, env: Env, ctx: ExecutionContext) =>
+    router
+      .handle(req, env, ctx)
+      .catch(error)
+      // Apply CORS headers
+      .then((res: Response) => {
+        const url = new URL(req.url);
+        // Allow all subdomain of nekoid.cc
+        if (url.hostname.endsWith('nekoid.cc')) {
+          res.headers.set('Access-Control-Allow-Origin', url.origin);
+          res.headers.set('Vary', 'Origin');
+        }
+        return res;
+      }),
 };
