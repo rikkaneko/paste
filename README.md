@@ -32,13 +32,17 @@ It is worth noting that Cloudflare Worker is run *before* the cache. Therefore, 
 
 |Name|Description|
 |-|-|
-|`SERVICE_URL`|The URL of the service|
-|`PASTE_INDEX_HTML_URL`|The URL of the service frontpage HTML|
+|`SERVICE_URL`|Service URL|
+|`PASTE_INDEX_HTML_URL`|Service frontpage HTML URL|
 |`UUID_LENGTH`|The length of the UUID of the paste (Default: 4)|
-|`PASTE_INDEX`|The Unique ID of Cloudflare KV namespace|
-|`AWS_ACCESS_KEY_ID`|The AWS access key|
-|`AWS_SECRET_ACCESS_KEY`|The AWS secret key|
-|`ENDPOINT`|The gateway endpoint to the S3 service|
+|`PASTE_INDEX`|Cloudflare KV namespace ID|
+|`AWS_ACCESS_KEY_ID`|AWS access key|
+|`AWS_SECRET_ACCESS_KEY`|AWS secret key|
+|`ENDPOINT`|S3 endpoint|
+|`LARGE_AWS_ACCESS_KEY_ID`|AWS access key for `LARGE_ENDPOINT`|
+|`LARGE_AWS_SECRET_ACCESS_KEY`|AWS secret key for `LARGE_ENDPOINT`|
+|`LARGE_ENDPOINT`|S3 endpoint to upload *large paste*|
+|`LARGE_DOWNLOAD_ENDPOINT`|S3/CDN endpoint/ to retrieve *large paste*|
 
 (Compatible to any S3-compatible object storage)  
 **`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` and `ENDPOINT` should be kept secret,
@@ -52,7 +56,7 @@ i.e., [encrypted store](https://developers.cloudflare.com/workers/platform/envir
 Upload a file (Raw body) with password enabled
 
 ```sh
-$ curl --data-binary @example.txt -H "x-pass: exmaple1234" "https://pb.nekoid.cc"
+$ curl -g -T ${FILE} -H "x-pass: exmaple1234" "https://pb.nekoid.cc"
 ```
 
 Upload a file (Formdata) with password enabled
@@ -115,11 +119,12 @@ Add `?qr=1` to enable QR code generation for paste link.
 |Form Key|Description|
 |-|-|
 |`u`|Upload content|
-|`pass`|Paste's password|
+|`pass`|Password|
 |`read-limit`|The maximum access count|
 |`qrcode`|Toggle QR code generation|
 |`paste-type`|Set paste type|
-|`title`|File's title|
+|`title`|File title|
+|`mime-type`|The media type (MIME) of the data and encoding|
 |`json`|Use JSON response|
 
 #### For raw request,
@@ -127,8 +132,8 @@ Add `?qr=1` to enable QR code generation for paste link.
 |Header Key|Description|
 |-|-|
 |`x-content-type`|The media type (MIME) of the data and encoding|
-|`x-title`|File's title|
-|`x-pass`|Paste's password|
+|`x-title`|File title|
+|`x-pass`|Password|
 |`x-read-limit`|The maximum access count|
 |`x-paste-type`|Set paste type|
 |`x-qr`|Toggle QR code generation|
@@ -140,7 +145,8 @@ The request body contains the upload content.
 
 |Type|Description|
 |-|-|
-|`paste`|Normal paste content|
+|`paste`|Normal paste (<25MB)|
+|`large_paste`|Large paste(>25MB)|
 |`link`|URL link to be redirected|
 
 ### GET /\<uuid\>/\<option\>
@@ -148,6 +154,7 @@ The request body contains the upload content.
 Fetch the paste (code) in rendered HTML with syntax highlighting  
 Add `?qr=1` to enable QR code generation for paste link.  
 Currently, only the following options is supported for `option`
+
 |Option|Meaning|
 |-|-|
 |`settings`|Fetch the paste information|
@@ -164,6 +171,31 @@ Delete paste by uuid. *If the password is set, this request requires additional 
 ### POST /\<uuid\>/settings (Not implemented)
 
 Update paste setting. *If the password is set, this request requires additional `x-pass` header*
+
+### POST /v2/large_upload/create
+
+Generate the presigned URL for upload large paste to the given S3 endpoint `LARGE_ENDPOINT` using HTTP `PUT` request.
+
+#### For `multipart/form-data` request,
+
+|Form Key|Description|
+|-|-|
+|`title`|File title|
+|`file-size`|File size|
+|`file-sha256-hash`|File hash (SHA256)|
+|`mime-type`|The media type (MIME) of the data and encoding|
+|`read-limit`|The maximum access count|
+|`pass`|Password|
+
+The `file-size` and `file-sha256sum` field is required.
+
+### POST /v2/large_upload/complete/<uuid>
+
+Finialize the paste created from `/v2/large_upload/create`.
+
+### GET /v2/large_upload/<uuid>
+
+Generate the presigned URL for upload large paste to the given S3 endpoint `LARGE_DOWNLOAD_ENDPOINT` using HTTP `GET` request.
 
 ## Expiring paste
 
