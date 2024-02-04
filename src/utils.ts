@@ -23,14 +23,7 @@ import { PasteIndexEntry, Env } from './types';
 
 export const gen_id = customAlphabet('1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz', UUID_LENGTH);
 
-export async function get_paste_info(
-  uuid: string,
-  descriptor: PasteIndexEntry,
-  env: Env,
-  use_html: boolean = true,
-  need_qr: boolean = false,
-  reply_json = false
-): Promise<Response> {
+export function get_paste_info_obj(uuid: string, descriptor: PasteIndexEntry, env: Env) {
   const created = new Date(descriptor.last_modified);
   const expired = new Date(descriptor.expiration ?? descriptor.last_modified + 2419200000);
   const link = `https://${SERVICE_URL}/${uuid}`;
@@ -49,6 +42,18 @@ export async function get_paste_info(
     expired: expired.toISOString(),
     update_completed: descriptor.upload_completed ?? undefined, // only for large_paste
   };
+  return paste_info;
+}
+
+export async function get_paste_info(
+  uuid: string,
+  descriptor: PasteIndexEntry,
+  env: Env,
+  use_html: boolean = true,
+  need_qr: boolean = false,
+  reply_json = false
+): Promise<Response> {
+  const paste_info = get_paste_info_obj(uuid, descriptor, env);
 
   // Reply with JSON
   if (reply_json) {
@@ -63,7 +68,7 @@ export async function get_paste_info(
   // Plain text reply
   let content = dedent`
     uuid: ${uuid}
-    link: ${link}
+    link: ${paste_info.link}
     type: ${paste_info.type ?? 'paste'}
     title: ${paste_info.title || '-'}
     mime-type: ${paste_info.mime_type ?? '-'}
@@ -95,7 +100,7 @@ export async function get_paste_info(
           ${
             need_qr
               ? `<img src="${paste_info.link_qr}"
-            alt="${link}" style="max-width: 280px">`
+            alt="${paste_info.link}" style="max-width: 280px">`
               : ''
           } 
         </body>
@@ -116,7 +121,7 @@ export async function get_paste_info(
     const res = await env.QRCODE.fetch(
       'https://qrcode.nekoid.cc?' +
         new URLSearchParams({
-          q: link,
+          q: paste_info.link,
           type: 'utf8',
         })
     );

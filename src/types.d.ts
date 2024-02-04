@@ -2,6 +2,7 @@ import { IRequest } from 'itty-router';
 
 export type ERequest = {
   is_browser: boolean;
+  origin?: string;
   // match_etag?: string;
 } & IRequest;
 
@@ -20,6 +21,8 @@ export interface PasteIndexEntry {
   // Only apply when large_paste
   upload_completed?: boolean;
   sha256_hash?: string;
+  cached_presigned_url?: string;
+  cached_presigned_url_expiration?: string;
 }
 
 export interface Env {

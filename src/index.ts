@@ -27,9 +27,22 @@ import { get_presign_url, router as large_upload } from './v2/large_upload';
 
 const router = Router<ERequest, [Env, ExecutionContext]>();
 
+// Shared common properties to all route
+router.all('*', (request) => {
+  const { headers } = request;
+  // Detect if request from browsers
+  const agent = headers.get('user-agent') ?? '';
+  request.is_browser = ['Chrome', 'Mozilla', 'AppleWebKit', 'Safari', 'Gecko', 'Chromium'].some((v) =>
+    agent.includes(v)
+  );
+  // Append the origin/referer
+  request.origin = headers.get('origin') ?? undefined;
+});
+
 // Handle preflighted CORS request
 router.options('*', (request) => {
-  const url = new URL(request.url);
+  if (!request.origin) return new Response(null);
+  const url = new URL(request.origin);
   // Allow all subdomain of nekoid.cc
   if (url.hostname.endsWith('nekoid.cc')) {
     return new Response(null, {
@@ -37,19 +50,10 @@ router.options('*', (request) => {
       headers: {
         'Access-Control-Allow-Origin': url.origin,
         'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
-        'Vary': 'Origin',
-      }
-    })
+        Vary: 'Origin',
+      },
+    });
   }
-});
-
-// Shared common properties to all route
-router.all('*', (request) => {
-  // Detect if request from browsers
-  const agent = request.headers.get('user-agent') ?? '';
-  request.is_browser = ['Chrome', 'Mozilla', 'AppleWebKit', 'Safari', 'Gecko', 'Chromium'].some((v) =>
-    agent.includes(v)
-  );
 });
 
 /* Static file path */
@@ -546,13 +550,14 @@ router.all('*', () => {
 });
 
 export default {
-  fetch: (req: Request, env: Env, ctx: ExecutionContext) =>
+  fetch: (req: ERequest, env: Env, ctx: ExecutionContext) =>
     router
       .handle(req, env, ctx)
       .catch(error)
       // Apply CORS headers
       .then((res: Response) => {
-        const url = new URL(req.url);
+        if (!req.origin) return res;
+        const url = new URL(req.origin);
         // Allow all subdomain of nekoid.cc
         if (url.hostname.endsWith('nekoid.cc')) {
           res.headers.set('Access-Control-Allow-Origin', url.origin);

@@ -1,8 +1,9 @@
 import { Router } from 'itty-router';
 import { sha256 } from 'js-sha256';
 import { AwsClient } from 'aws4fetch';
+import { parseStringPromise } from 'xml2js';
 import { ERequest, Env, PasteIndexEntry } from '../types';
-import { gen_id } from '../utils';
+import { gen_id, get_paste_info_obj } from '../utils';
 import { UUID_LENGTH } from '../constant';
 
 export const router = Router<ERequest, [Env, ExecutionContext]>({ base: '/v2/large_upload' });
@@ -195,24 +196,31 @@ router.post('/complete/:uuid', async (request, env, ctx) => {
   });
 
   try {
-    const objectmeta = await s3.fetch(`${env.LARGE_ENDPOINT}/${uuid}`, {
-      method: 'HEAD',
+    // Get object attributes
+    const objectmeta = await s3.fetch(`${env.LARGE_DOWNLOAD_ENDPOINT}/${uuid}?attributes`, {
+      method: 'GET',
+      headers: {
+        'X-AMZ-Object-Attributes': 'ObjectSize',
+      },
     });
     if (objectmeta.ok) {
-      const { headers } = objectmeta;
-      const file_size = headers.get('Content-Length') || '0';
+      const xml = await objectmeta.text();
+      const parsed = await parseStringPromise(xml, {
+        tagNameProcessors: [(name) => name.toLowerCase()],
+      });
+      const file_size = parsed.getobjectattributesresponse.objectsize[0];
       if (parseInt(file_size) !== descriptor.size) {
         return new Response('This paste is not finishing the upload.\n', {
           status: 400,
         });
       }
     } else {
-      return new Response('This paste is not finishing the upload.\n', {
+      return new Response('This paste is not finishing upload.\n', {
         status: 400,
       });
     }
   } catch (err) {
-    return new Response('Unable to connect to remote.\n', {
+    return new Response('Internal server error.\n', {
       status: 500,
     });
   }
@@ -225,14 +233,12 @@ router.post('/complete/:uuid', async (request, env, ctx) => {
   ctx.waitUntil(env.PASTE_INDEX.put(uuid, JSON.stringify(descriptor), { expirationTtl: 2419200 }));
 
   const paste_info = {
-    uuid,
     upload_completed: true,
     expired: new Date(expriation).toISOString(),
+    paste_info: get_paste_info_obj(uuid, descriptor, env),
   };
 
-  return new Response(JSON.stringify(paste_info), {
-    status: 400,
-  });
+  return new Response(JSON.stringify(paste_info));
 });
 
 router.get('/:uuid', async (request, env, ctx) => {

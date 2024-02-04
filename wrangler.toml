@@ -8,6 +8,7 @@ kv_namespaces = [
 services = [
     { binding = "QRCODE", service = "qrcode-gen", environment = "production" }
 ]
+node_compat = true
 
 # [secret]
 # AWS_ACCESS_KEY_ID
