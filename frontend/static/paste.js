@@ -286,7 +286,7 @@ $(function () {
         });
 
         if (!res1.ok) {
-          throw new Error(`Unable to upload paste: ${(await res1.text()) || `${res.status} ${res.statusText}`}`);
+          throw new Error(`Unable to upload paste: ${(await res1.text()) || `${res1.status} ${res1.statusText}`}`);
         }
         // Finialize the paste
         const res2 = await fetch(`${ENDPOINT}/v2/large_upload/complete/${create_result.uuid}`, {
@@ -298,7 +298,7 @@ $(function () {
           show_pop_alert(`Paste #${complete_result.paste_info.uuid} created!`, 'alert-success');
           pass_input.val('');
         } else {
-          throw new Error(`Unable to finialize paste: ${(await res2.text()) || `${res.status} ${res.statusText}`}`);
+          throw new Error(`Unable to finialize paste: ${(await res2.text()) || `${res2.status} ${res2.statusText}`}`);
         }
       } catch (err) {
         console.log('error', err);
@@ -306,6 +306,15 @@ $(function () {
       }
     } else {
       // Handle normal paste (<= 25MB)
+      switch (type) {
+        case 'file':
+        case 'text':
+          formdata.set('paste-type', 'paste');
+          break;
+        case 'url':
+          formdata.set('paste-type', 'link');
+      }
+
       // Remove empty entries
       let filtered = new FormData();
       formdata.forEach((val, key) => {
