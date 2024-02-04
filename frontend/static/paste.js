@@ -18,6 +18,8 @@
 
 /// <reference path="../../node_modules/@types/bootstrap/index.d.ts" />
 
+const ENDPOINT = '';
+
 let input_div = {
   file: null,
   text: null,
@@ -113,6 +115,16 @@ function build_paste_modal(paste_info, show_qrcode = true, saved = true, build_o
   if (!build_only) modal.show();
 }
 
+/**
+ * @param file {File}
+ * @returns {str}
+ */
+async function get_file_hash(file) {
+  const word_arr = CryptoJS.lib.WordArray.create(await file.arrayBuffer());
+  const file_hash = CryptoJS.SHA256(word_arr).toString(CryptoJS.enc.Hex);
+  return file_hash;
+}
+
 $(function () {
   input_div.file = $('#file_upload_layout');
   input_div.text = $('#text_input_layout');
@@ -170,11 +182,11 @@ $(function () {
     title.val(this.files[0]?.name || '');
     file_stat.text(`${this.files[0]?.type || 'application/octet-stream'}, ${size}`);
 
-    // Check length
-    if (bytes > 10485760) {
+    // Check length <= 250MB
+    if (bytes > 262144000) {
       inputs.file.addClass('is-invalid');
       file_stat.addClass('text-danger');
-      file_stat.text('The uploaded file is larger than the 10 MB limit.');
+      file_stat.text('The uploaded file is larger than the 250MB limit.');
     }
   });
 
@@ -216,6 +228,7 @@ $(function () {
     const form = $('#upload_form')[0];
     let formdata = new FormData(form);
     const type = formdata.get('paste-type');
+    /** @type {File} */
     const content = formdata.get('u');
 
     inputs[type].trigger('input');
@@ -230,44 +243,94 @@ $(function () {
       return false;
     }
 
-    switch (type) {
-      case 'file':
-        formdata.set('paste-type', 'paste');
-        break;
-      case 'text':
-        formdata.set('paste-type', 'paste');
-        break;
-      case 'url':
-        formdata.set('paste-type', 'link');
-    }
-
-    // Remove empty entries
-    let filtered = new FormData();
-    formdata.forEach((val, key) => {
-      if (val) filtered.set(key, val);
-    });
-
-    // Request JSON response
-    filtered.set('json', '1');
     upload_button.prop('disabled', true);
-    upload_button.text('Uploading...');
-    try {
-      const res = await fetch('/', {
-        method: 'POST',
-        body: filtered,
+    upload_button.text('Waiting...');
+
+    // Hanlde large paste (> 10MB)
+    if (content.size > 10485760) {
+      const file_hash = await get_file_hash(content);
+      const params = {
+        title: content.name,
+        'file-size': content.size,
+        'file-sha256-hash': file_hash,
+        'mime-type': content.type,
+        'read-limit': formdata.get('read-limit') || undefined,
+        pass: formdata.get('pass') || undefined,
+      };
+
+      // Remove empty entries
+      const filtered = new FormData();
+      Object.entries(params).forEach(([key, val]) => {
+        if (val) filtered.set(key, val);
       });
 
-      if (res.ok) {
-        const paste_info = await res.json();
-        show_pop_alert('Paste created!', 'alert-success');
-        pass_input.val('');
-        build_paste_modal(paste_info, show_qrcode);
-      } else {
-        show_pop_alert('Unable to create paste', 'alert-warning');
+      try {
+        // Retrieve presigned URL for upload large paste
+        const res = await fetch(`${ENDPOINT}/v2/large_upload/create`, {
+          method: 'POST',
+          body: filtered,
+        });
+
+        if (!res.ok) {
+          throw new Error(`Unable to create paste: ${(await res.text()) || `${res.status} ${res.statusText}`}`);
+        }
+        // Upload the paste to the endpoint
+        upload_button.text('Uploading...');
+        const create_result = await res.json();
+        const res1 = await fetch(create_result.signed_url, {
+          method: 'PUT',
+          headers: {
+            'X-Amz-Content-Sha256': file_hash,
+          },
+          body: content,
+        });
+
+        if (!res1.ok) {
+          throw new Error(`Unable to upload paste: ${(await res1.text()) || `${res.status} ${res.statusText}`}`);
+        }
+        // Finialize the paste
+        const res2 = await fetch(`${ENDPOINT}/large_upload/complete/${create_result.uuid}`, {
+          method: 'POST',
+        });
+        if (res2.ok) {
+          const complete_result = await res2.json();
+          build_paste_modal(complete_result.paste_info, show_qrcode);
+          show_pop_alert(`Paste #${complete_result.paste_info.uuid} created!`, 'alert-success');
+          pass_input.val('');
+        } else {
+          throw new Error(`Unable to finialize paste: ${(await res2.text()) || `${res.status} ${res.statusText}`}`);
+        }
+      } catch (err) {
+        console.log('error', err);
+        show_pop_alert(err.message, 'alert-danger');
       }
-    } catch (err) {
-      console.log('error', err);
-      show_pop_alert(err.message, 'alert-danger');
+    } else {
+      // Handle normal paste (<= 25MB)
+      // Remove empty entries
+      let filtered = new FormData();
+      formdata.forEach((val, key) => {
+        if (val) filtered.set(key, val);
+      });
+      // Request JSON response
+      filtered.set('json', '1');
+      try {
+        const res = await fetch(`${ENDPOINT}/`, {
+          method: 'POST',
+          body: filtered,
+        });
+
+        if (res.ok) {
+          const paste_info = await res.json();
+          build_paste_modal(paste_info, show_qrcode);
+          show_pop_alert(`Paste #${paste_info.uuid} created!`, 'alert-success');
+          pass_input.val('');
+        } else {
+          throw new Error('Unable to upload paste');
+        }
+      } catch (err) {
+        console.log('error', err);
+        show_pop_alert(err.message, 'alert-danger');
+      }
     }
 
     upload_button.prop('disabled', false);
@@ -304,7 +367,7 @@ $(function () {
     }
 
     try {
-      const res = await fetch(`/${uuid}/settings?${new URLSearchParams({ json: '1' })}`);
+      const res = await fetch(`${ENDPOINT}/${uuid}/settings?${new URLSearchParams({ json: '1' })}`);
       if (res.ok) {
         const paste_info = await res.json();
         build_paste_modal(paste_info, show_qrcode, false);
