@@ -22,7 +22,7 @@ import { Router, error } from 'itty-router';
 import { ERequest, Env, PasteIndexEntry, PASTE_TYPES } from './types';
 import { serve_static } from './proxy';
 import { check_password_rules, get_paste_info, get_basic_auth, gen_id } from './utils';
-import { UUID_LENGTH, PASTE_WEB_URL, SERVICE_URL } from './constant';
+import { UUID_LENGTH, PASTE_WEB_URL, SERVICE_URL, CORS_DOMAIN } from './constant';
 import { get_presign_url, router as large_upload } from './v2/large_upload';
 
 const router = Router<ERequest, [Env, ExecutionContext]>();
@@ -44,7 +44,7 @@ router.options('*', (request) => {
   if (!request.origin) return new Response(null);
   const url = new URL(request.origin);
   // Allow all subdomain of nekoid.cc
-  if (url.hostname.endsWith('nekoid.cc')) {
+  if (url.hostname.endsWith(CORS_DOMAIN)) {
     return new Response(null, {
       status: 204,
       headers: {
@@ -217,6 +217,7 @@ router.post('/', async (request, env, ctx) => {
   const s3 = new AwsClient({
     accessKeyId: env.AWS_ACCESS_KEY_ID,
     secretAccessKey: env.AWS_SECRET_ACCESS_KEY,
+    service: 's3', // required
   });
 
   const res = await s3.fetch(`${env.ENDPOINT}/${uuid}`, {
@@ -344,10 +345,18 @@ router.get('/:uuid/:option?', async (request, env, ctx) => {
     }
 
     const signed_url = await get_presign_url(uuid, descriptor, env);
+
+    ctx.waitUntil(
+      env.PASTE_INDEX.put(uuid, JSON.stringify(descriptor), {
+        expiration: descriptor.expiration! / 1000,
+      })
+    );
+
     return new Response(null, {
       status: 301,
       headers: {
         location: signed_url,
+        'cache-control': 'no-store',
       },
     });
   }
@@ -372,6 +381,7 @@ router.get('/:uuid/:option?', async (request, env, ctx) => {
     const s3 = new AwsClient({
       accessKeyId: env.AWS_ACCESS_KEY_ID,
       secretAccessKey: env.AWS_SECRET_ACCESS_KEY,
+      service: 's3', // required
     });
     // Fetch form origin if not hit cache
     let origin = await s3.fetch(`${env.ENDPOINT}/${uuid}`, {
@@ -559,7 +569,7 @@ export default {
         if (!req.origin) return res;
         const url = new URL(req.origin);
         // Allow all subdomain of nekoid.cc
-        if (url.hostname.endsWith('nekoid.cc')) {
+        if (url.hostname.endsWith(CORS_DOMAIN)) {
           res.headers.set('Access-Control-Allow-Origin', url.origin);
           res.headers.set('Vary', 'Origin');
         }

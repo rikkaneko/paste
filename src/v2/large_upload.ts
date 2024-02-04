@@ -9,8 +9,17 @@ import { UUID_LENGTH } from '../constant';
 export const router = Router<ERequest, [Env, ExecutionContext]>({ base: '/v2/large_upload' });
 
 export async function get_presign_url(uuid: string, descriptor: PasteIndexEntry, env: Env) {
+  // Use cached presigned url if expiration is more than 10 mins
+  if (descriptor.cached_presigned_url) {
+    const expiration = new Date(descriptor.cached_presigned_url_expiration ?? 0);
+    const time_to_renew = new Date(Date.now() + 600 * 1000); // 10 mins after
+    if (expiration >= time_to_renew) {
+      return descriptor.cached_presigned_url;
+    }
+  }
+
   const endpoint_url = new URL(`${env.LARGE_DOWNLOAD_ENDPOINT}/${uuid}`);
-  endpoint_url.searchParams.set('X-Amz-Expires', '3600');
+  endpoint_url.searchParams.set('X-Amz-Expires', '14400'); // Valid for 4 hours
   endpoint_url.searchParams.set(
     'response-content-disposition',
     `inline; filename*=UTF-8''${encodeURIComponent(descriptor.title ?? uuid)}`
@@ -21,7 +30,7 @@ export async function get_presign_url(uuid: string, descriptor: PasteIndexEntry,
   const s3 = new AwsClient({
     accessKeyId: env.LARGE_AWS_ACCESS_KEY_ID!,
     secretAccessKey: env.LARGE_AWS_SECRET_ACCESS_KEY!,
-    service: 's3',
+    service: 's3', // required
   });
 
   const signed = await s3.sign(endpoint_url, {
@@ -31,6 +40,9 @@ export async function get_presign_url(uuid: string, descriptor: PasteIndexEntry,
       signQuery: true,
     },
   });
+
+  descriptor.cached_presigned_url = signed.url;
+  descriptor.cached_presigned_url_expiration = new Date(Date.now() + 14400 * 1000).getTime();
 
   return signed.url;
 }
@@ -111,13 +123,13 @@ router.post('/create', async (request, env, ctx) => {
   const s3 = new AwsClient({
     accessKeyId: env.LARGE_AWS_ACCESS_KEY_ID!,
     secretAccessKey: env.LARGE_AWS_SECRET_ACCESS_KEY!,
-    service: 's3',
+    service: 's3', // required
   });
 
   const current = Date.now();
   const expiration = new Date(current + 14400 * 1000).getTime();
   const endpoint_url = new URL(`${env.LARGE_ENDPOINT}/${uuid}`);
-  endpoint_url.searchParams.set('X-Amz-Expires', '14400');
+  endpoint_url.searchParams.set('X-Amz-Expires', '900'); // Valid for 15 mins
   const required_headers = {
     'Content-Length': file_size.toString(),
     'X-Amz-Content-Sha256': file_hash,
@@ -147,7 +159,7 @@ router.post('/create', async (request, env, ctx) => {
     title: file_title || undefined,
     mime_type: file_mime || undefined,
     last_modified: current,
-    expiration: new Date(Date.now() + 3600 * 1000).getTime(),
+    expiration: new Date(Date.now() + 900 * 1000).getTime(),
     password: password ? sha256(password).slice(0, 16) : undefined,
     read_count_remain: read_limit ?? undefined,
     type: 'large_paste',
@@ -192,7 +204,7 @@ router.post('/complete/:uuid', async (request, env, ctx) => {
   const s3 = new AwsClient({
     accessKeyId: env.LARGE_AWS_ACCESS_KEY_ID!,
     secretAccessKey: env.LARGE_AWS_SECRET_ACCESS_KEY!,
-    service: 's3',
+    service: 's3', // required
   });
 
   try {

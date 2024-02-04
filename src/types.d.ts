@@ -22,7 +22,7 @@ export interface PasteIndexEntry {
   upload_completed?: boolean;
   sha256_hash?: string;
   cached_presigned_url?: string;
-  cached_presigned_url_expiration?: string;
+  cached_presigned_url_expiration?: number;
 }
 
 export interface Env {
