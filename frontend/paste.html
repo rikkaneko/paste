@@ -217,10 +217,10 @@
           </button>
         </div>
         <img src="" class="mb-3 rounded mx-auto d-block w-75" alt="" id="paste_qrcode" style="max-width: 280px">
-        <div class="mb-3 w-75 mx-auto">
-          <table class="table table-striped table-bordered align-middle caption-top">
+        <div class="mb-3 mx-auto">
+          <table class="table table-striped table-bordered align-middle caption-top mx-auto" style="max-width: 280px;">
             <caption>Paste information</caption>
-            <tbody>
+            <tbody id="paste_info_table">
             <tr>
               <td class="text-center col-3 text-nowrap">Paste ID</td>
               <td class="text-center col-6" id="paste_info_uuid">-</td>
@@ -247,11 +247,11 @@
             </tr>
             <tr>
               <td class="text-center col-3 text-nowrap">Created</td>
-              <td class="text-center col-6 text-nowrap" id="paste_info_created">-</td>
+              <td class="text-center col-6 text-nowrap text-truncate" id="paste_info_created">-</td>
             </tr>
             <tr>
               <td class="text-center col-3 text-nowrap">Expired</td>
-              <td class="text-center col-6 text-nowrap" id="paste_info_expired">-</td>
+              <td class="text-center col-6 text-nowrap text-truncate" id="paste_info_expired">-</td>
             </tr>
             </tbody>
           </table>

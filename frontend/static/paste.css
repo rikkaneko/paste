@@ -23,3 +23,19 @@
 .card-header .collapsed .fa-chevron-down {
   transform: rotate(90deg);
 }
+
+#paste_info_table td.col-6 {
+  max-width: 200px;
+}
+
+#paste_info_title {
+  overflow: scroll;
+  white-space: nowrap;
+  scrollbar-width: none; /* Firefox */
+}
+
+#paste_info_title::-webkit-scrollbar {
+  width: 0px;
+  height: 0px;
+  background: transparent;
+}

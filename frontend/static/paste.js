@@ -113,6 +113,7 @@ function build_paste_modal(paste_info, show_qrcode = true, saved = true, build_o
 
   let modal = new bootstrap.Modal(paste_modal.modal);
   if (!build_only) modal.show();
+  $('.modal-body').scrollTop('0');
 }
 
 /**
@@ -376,7 +377,7 @@ $(function () {
     }
 
     try {
-      const res = await fetch(`${ENDPOINT}/${uuid}/settings?${new URLSearchParams({ json: '1' })}`);
+      const res = await fetch(`https://pb.nekoid.cc/${uuid}/settings?${new URLSearchParams({ json: '1' })}`);
       if (res.ok) {
         const paste_info = await res.json();
         build_paste_modal(paste_info, show_qrcode, false);
@@ -401,11 +402,7 @@ $(function () {
         paste_modal.id_copy_btn.removeClass('btn-primary');
         paste_modal.id_copy_btn.addClass('btn-success');
         tooltip.setContent({ '.tooltip-inner': 'Copied' });
-      } catch (err) {
-        tooltip.setContent({ '.tooltip-inner': 'Copied failed' });
-      }
-    } else {
-      tooltip.setContent({ '.tooltip-inner': 'Copied failed' });
+      } catch (err) {}
     }
   });
 
