@@ -289,7 +289,7 @@ $(function () {
           throw new Error(`Unable to upload paste: ${(await res1.text()) || `${res.status} ${res.statusText}`}`);
         }
         // Finialize the paste
-        const res2 = await fetch(`${ENDPOINT}/large_upload/complete/${create_result.uuid}`, {
+        const res2 = await fetch(`${ENDPOINT}/v2/large_upload/complete/${create_result.uuid}`, {
           method: 'POST',
         });
         if (res2.ok) {
