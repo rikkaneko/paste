@@ -141,7 +141,7 @@ export async function get_paste_info(
   });
 }
 export function check_password_rules(password: string): boolean {
-  return password.match('^[A-z0-9]{4,}$') !== null;
+  return password.match('^[A-z0-9]{1,}$') !== null;
 }
 // Extract username and password from Basic Authorization header
 export function get_basic_auth(headers: Headers): [string, string] | null {

@@ -191,12 +191,9 @@ router.post('/', async (request, env, ctx) => {
 
   // Check password rules
   if (password && !check_password_rules(password)) {
-    return new Response(
-      'Invalid password. ' + 'Password must contain alphabets and digits only, and has a length of 4 or more.',
-      {
-        status: 422,
-      }
-    );
+    return new Response('Password can only contain alphabets and digits only.', {
+      status: 422,
+    });
   }
 
   // Check request.body size <= 25MB
