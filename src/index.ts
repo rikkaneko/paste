@@ -36,7 +36,7 @@ router.all('*', (request) => {
     agent.includes(v)
   );
   // Append the origin/referer
-  request.origin = headers.get('origin') ?? undefined;
+  request.origin = headers.get('referer') ?? undefined;
 });
 
 // Handle preflighted CORS request

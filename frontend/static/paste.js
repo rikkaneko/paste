@@ -335,7 +335,7 @@ $(function () {
           show_pop_alert(`Paste #${paste_info.uuid} created!`, 'alert-success');
           pass_input.val('');
         } else {
-          throw new Error('Unable to upload paste');
+          throw new Error(`Unable to upload paste: ${(await res.text()) || `${res.status} ${res.statusText}`}`);
         }
       } catch (err) {
         console.log('error', err);
