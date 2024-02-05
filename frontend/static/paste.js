@@ -41,6 +41,7 @@ let paste_modal = {
   id_copy_btn: null,
   id_copy_btn_icon: null,
   forget_btn: null,
+  go_btn: null,
 };
 
 let cached_paste_info = null;
@@ -79,7 +80,7 @@ function remove_pop_alert() {
   if (alert.length) alert.remove();
 }
 
-function build_paste_modal(paste_info, show_qrcode = true, saved = true, build_only = false) {
+function build_paste_modal(paste_info, show_qrcode = true, saved = true, one_time_only = false, build_only = false) {
   let tooltip = bootstrap.Tooltip.getInstance(paste_modal.id_copy_btn);
 
   paste_modal.uuid.text(paste_info.link);
@@ -113,6 +114,8 @@ function build_paste_modal(paste_info, show_qrcode = true, saved = true, build_o
 
   let modal = new bootstrap.Modal(paste_modal.modal);
   if (!build_only) modal.show();
+  paste_modal.forget_btn.prop('disabled', one_time_only);
+  paste_modal.forget_btn.prop('hidden', one_time_only);
   $('.modal-body').scrollTop('0');
 }
 
@@ -139,6 +142,7 @@ $(function () {
   paste_modal.id_copy_btn = $('#id_copy_button');
   paste_modal.id_copy_btn_icon = $('#id_copy_button_icon');
   paste_modal.forget_btn = $('#forget_btn');
+  paste_modal.go_btn = $('#modal_go_btn');
 
   let file_stat = $('#file_stats');
   let title = $('#paste_title');
@@ -331,7 +335,7 @@ $(function () {
 
         if (res.ok) {
           const paste_info = await res.json();
-          build_paste_modal(paste_info, show_qrcode);
+          build_paste_modal(paste_info, show_qrcode, true);
           show_pop_alert(`Paste #${paste_info.uuid} created!`, 'alert-success');
           pass_input.val('');
         } else {
@@ -380,7 +384,7 @@ $(function () {
       const res = await fetch(`https://pb.nekoid.cc/${uuid}/settings?${new URLSearchParams({ json: '1' })}`);
       if (res.ok) {
         const paste_info = await res.json();
-        build_paste_modal(paste_info, show_qrcode, false);
+        build_paste_modal(paste_info, show_qrcode, false, true);
       } else {
         show_pop_alert('Invalid Paste ID.', 'alert-warning');
       }
@@ -416,6 +420,11 @@ $(function () {
       tooltip.setContent({ '.tooltip-inner': 'Forgotten!' });
       show_saved_btn.prop('disabled', true);
     }
+  });
+
+  paste_modal.go_btn.on('click', function () {
+    const uuid = $('#paste_info_uuid').text();
+    window.open(`/${uuid}`);
   });
 
   show_qrcode_checkbox.on('click', function () {

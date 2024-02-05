@@ -1,7 +1,7 @@
 import { Router } from 'itty-router';
 import { sha256 } from 'js-sha256';
 import { AwsClient } from 'aws4fetch';
-import { parseStringPromise } from 'xml2js';
+import { xml2js } from 'xml-js';
 import { ERequest, Env, PasteIndexEntry } from '../types';
 import { gen_id, get_paste_info_obj } from '../utils';
 import { UUID_LENGTH } from '../constant';
@@ -217,11 +217,14 @@ router.post('/complete/:uuid', async (request, env, ctx) => {
     });
     if (objectmeta.ok) {
       const xml = await objectmeta.text();
-      const parsed = await parseStringPromise(xml, {
-        tagNameProcessors: [(name) => name.toLowerCase()],
+      const parsed: any = xml2js(xml, {
+        compact: true,
+        nativeType: true,
+        alwaysArray: false,
+        elementNameFn: (val) => val.toLowerCase(),
       });
-      const file_size = parsed.getobjectattributesresponse.objectsize[0];
-      if (parseInt(file_size) !== descriptor.size) {
+      const file_size: number = parsed.getobjectattributesresponse.objectsize._text;
+      if (file_size !== descriptor.size) {
         return new Response('This paste is not finishing the upload.\n', {
           status: 400,
         });
