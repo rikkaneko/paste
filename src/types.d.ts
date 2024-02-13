@@ -35,3 +35,12 @@ export interface Env {
   LARGE_ENDPOINT?: string;
   LARGE_DOWNLOAD_ENDPOINT?: string;
 }
+
+export interface PasteInit {
+  content: File | string; // field u
+  title?: string; // field title
+  mime?: string; // field mime
+  paste_type?: PASTE_TYPES; // field paste_type (Default: paste)
+  pass?: string; // field pass
+  read_limit?: number; // field number
+}
