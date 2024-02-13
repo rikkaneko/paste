@@ -23,7 +23,7 @@ import { PasteIndexEntry, Env } from './types';
 
 export const gen_id = customAlphabet('1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz', UUID_LENGTH);
 
-export function get_paste_info_obj(uuid: string, descriptor: PasteIndexEntry, env: Env) {
+export function get_paste_info_obj(uuid: string, descriptor: PasteIndexEntry) {
   const created = new Date(descriptor.last_modified);
   const expired = new Date(descriptor.expiration ?? descriptor.last_modified + 2419200000);
   const link = `https://${SERVICE_URL}/${uuid}`;
@@ -53,7 +53,7 @@ export async function get_paste_info(
   need_qr: boolean = false,
   reply_json = false
 ): Promise<Response> {
-  const paste_info = get_paste_info_obj(uuid, descriptor, env);
+  const paste_info = get_paste_info_obj(uuid, descriptor);
 
   // Reply with JSON
   if (reply_json) {
@@ -167,6 +167,7 @@ export function get_basic_auth(headers: Headers): [string, string] | null {
     return null;
   }
 }
+
 function to_human_readable_size(bytes: number): string {
   let size = bytes + ' bytes';
   const units = ['KiB', 'MiB', 'GiB', 'TiB'];

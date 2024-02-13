@@ -165,7 +165,6 @@ router.post('/create', async (request, env, ctx) => {
     type: 'large_paste',
     size: file_size,
     upload_completed: false,
-    sha256_hash: file_hash,
   };
 
   ctx.waitUntil(
@@ -250,7 +249,7 @@ router.post('/complete/:uuid', async (request, env, ctx) => {
   const paste_info = {
     upload_completed: true,
     expired: new Date(expriation).toISOString(),
-    paste_info: get_paste_info_obj(uuid, descriptor, env),
+    paste_info: get_paste_info_obj(uuid, descriptor),
   };
 
   return new Response(JSON.stringify(paste_info));

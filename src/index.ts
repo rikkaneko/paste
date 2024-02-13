@@ -19,7 +19,7 @@
 import { AwsClient } from 'aws4fetch';
 import { sha256 } from 'js-sha256';
 import { Router, error } from 'itty-router';
-import { ERequest, Env, PasteIndexEntry, PASTE_TYPES } from './types';
+import { ERequest, Env, PasteIndexEntry } from './types';
 import { serve_static } from './proxy';
 import { check_password_rules, get_paste_info, get_basic_auth, gen_id } from './utils';
 import { UUID_LENGTH, PASTE_WEB_URL, SERVICE_URL, CORS_DOMAIN } from './constant';
@@ -334,6 +334,7 @@ router.get('/:uuid/:option?', async (request, env, ctx) => {
 
   // New added in 2.0
   // Handle large_paste
+  // Use presigned url generation only if the file size larger than 200MB, use request forwarding instead
   if (descriptor.type === 'large_paste') {
     if (!descriptor.upload_completed) {
       return new Response('This paste is not yet finalized.\n', {
@@ -341,21 +342,23 @@ router.get('/:uuid/:option?', async (request, env, ctx) => {
       });
     }
 
-    const signed_url = await get_presign_url(uuid, descriptor, env);
+    if (descriptor.size >= 209715200) {
+      const signed_url = await get_presign_url(uuid, descriptor, env);
 
-    ctx.waitUntil(
-      env.PASTE_INDEX.put(uuid, JSON.stringify(descriptor), {
-        expiration: descriptor.expiration! / 1000,
-      })
-    );
+      ctx.waitUntil(
+        env.PASTE_INDEX.put(uuid, JSON.stringify(descriptor), {
+          expiration: descriptor.expiration! / 1000,
+        })
+      );
 
-    return new Response(null, {
-      status: 301,
-      headers: {
-        location: signed_url,
-        'cache-control': 'no-store',
-      },
-    });
+      return new Response(null, {
+        status: 301,
+        headers: {
+          location: signed_url,
+          'cache-control': 'no-store',
+        },
+      });
+    }
   }
 
   // Enable CF cache for authorized request
@@ -375,13 +378,20 @@ router.get('/:uuid/:option?', async (request, env, ctx) => {
 
   let res = await cache.match(req_key);
   if (res === undefined) {
+    // Use althernative endpoint and credentials for large_type
+    const endpoint = descriptor.type === 'large_paste' ? env.LARGE_DOWNLOAD_ENDPOINT : env.ENDPOINT;
+    const access_key_id = descriptor.type === 'large_paste' ? env.LARGE_AWS_ACCESS_KEY_ID! : env.AWS_ACCESS_KEY_ID;
+    const secret_access_key =
+      descriptor.type === 'large_paste' ? env.LARGE_AWS_SECRET_ACCESS_KEY! : env.AWS_SECRET_ACCESS_KEY;
+
     const s3 = new AwsClient({
-      accessKeyId: env.AWS_ACCESS_KEY_ID,
-      secretAccessKey: env.AWS_SECRET_ACCESS_KEY,
+      accessKeyId: access_key_id,
+      secretAccessKey: secret_access_key,
       service: 's3', // required
     });
+
     // Fetch form origin if not hit cache
-    let origin = await s3.fetch(`${env.ENDPOINT}/${uuid}`, {
+    let origin = await s3.fetch(`${endpoint}/${uuid}`, {
       method: 'GET',
       headers: match_etag
         ? {
@@ -527,12 +537,19 @@ router.delete('/:uuid', async (request, env, ctx) => {
       });
     }
   }
+
+  // Use althernative endpoint and credentials for large_type
   const endpoint = descriptor.type === 'large_paste' ? env.LARGE_DOWNLOAD_ENDPOINT : env.ENDPOINT;
+  const access_key_id = descriptor.type === 'large_paste' ? env.LARGE_AWS_ACCESS_KEY_ID! : env.AWS_ACCESS_KEY_ID;
+  const secret_access_key =
+    descriptor.type === 'large_paste' ? env.LARGE_AWS_SECRET_ACCESS_KEY! : env.AWS_SECRET_ACCESS_KEY;
+
   const s3 = new AwsClient({
-    accessKeyId: descriptor.type === 'large_paste' ? env.LARGE_AWS_ACCESS_KEY_ID! : env.AWS_ACCESS_KEY_ID,
-    secretAccessKey: descriptor.type === 'large_paste' ? env.LARGE_AWS_SECRET_ACCESS_KEY! : env.AWS_SECRET_ACCESS_KEY,
+    accessKeyId: access_key_id,
+    secretAccessKey: secret_access_key,
     service: 's3', // required
   });
+
   let res = await s3.fetch(`${endpoint}/${uuid}`, {
     method: 'DELETE',
   });

@@ -6,7 +6,7 @@ export type ERequest = {
   // match_etag?: string;
 } & IRequest;
 
-export type PASTE_TYPES = 'paste' | 'link' | 'large_paste';
+export type PASTE_TYPES = 'paste' | 'text' | 'link' | 'large_paste';
 
 export interface PasteIndexEntry {
   title?: string;
@@ -20,7 +20,6 @@ export interface PasteIndexEntry {
   type: PASTE_TYPES;
   // Only apply when large_paste
   upload_completed?: boolean;
-  sha256_hash?: string;
   cached_presigned_url?: string;
   cached_presigned_url_expiration?: number;
 }
