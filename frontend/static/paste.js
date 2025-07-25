@@ -381,7 +381,7 @@ $(function () {
     }
 
     try {
-      const res = await fetch(`https://pb.nekoid.cc/${uuid}/settings?${new URLSearchParams({ json: '1' })}`);
+      const res = await fetch(`${ENDPOINT}/${uuid}/settings?${new URLSearchParams({ json: '1' })}`);
       if (res.ok) {
         const paste_info = await res.json();
         build_paste_modal(paste_info, show_qrcode, false, true);

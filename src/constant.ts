@@ -1,4 +1,15 @@
-export const SERVICE_URL = 'pb.nekoid.cc';
-export const PASTE_WEB_URL = 'https://raw.githubusercontent.com/rikkaneko/paste/main/frontend';
-export const UUID_LENGTH = 4;
-export const CORS_DOMAIN = 'nekoid.cc';
+import { Config, Env } from './types';
+
+// @ts-ignore
+let CONSTANTS: Config = {
+  UUID_LENGTH: 4,
+};
+export default CONSTANTS;
+
+// Fetch variable from Env
+export const fetch_constant = (env: Env) => {
+  CONSTANTS = {
+    ...env,
+    ...CONSTANTS,
+  };
+};

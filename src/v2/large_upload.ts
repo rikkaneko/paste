@@ -4,11 +4,11 @@ import { AwsClient } from 'aws4fetch';
 import { xml2js } from 'xml-js';
 import { ERequest, Env, PasteIndexEntry } from '../types';
 import { gen_id, get_paste_info_obj } from '../utils';
-import { UUID_LENGTH } from '../constant';
+import constants from '../constant';
 
 export const router = Router<ERequest, [Env, ExecutionContext]>({ base: '/v2/large_upload' });
 
-export async function get_presign_url(uuid: string, descriptor: PasteIndexEntry, env: Env) {
+export async function get_presign_url(uuid: string, descriptor: PasteIndexEntry) {
   // Use cached presigned url if expiration is more than 10 mins
   if (descriptor.cached_presigned_url) {
     const expiration = new Date(descriptor.cached_presigned_url_expiration ?? 0);
@@ -18,22 +18,28 @@ export async function get_presign_url(uuid: string, descriptor: PasteIndexEntry,
     }
   }
 
-  const endpoint_url = new URL(`${env.LARGE_DOWNLOAD_ENDPOINT}/${uuid}`);
-  endpoint_url.searchParams.set('X-Amz-Expires', '14400'); // Valid for 4 hours
-  endpoint_url.searchParams.set(
+  const download_url = constants.LARGE_DOWNLOAD_ENDPOINT ?? constants.LARGE_ENDPOINT;
+  if (download_url == null) {
+    // Not method to download
+    return null;
+  }
+
+  const download_path = new URL(`${download_url}/${uuid}`);
+  download_path.searchParams.set('X-Amz-Expires', '14400'); // Valid for 4 hours
+  download_path.searchParams.set(
     'response-content-disposition',
     `inline; filename*=UTF-8''${encodeURIComponent(descriptor.title ?? uuid)}`
   );
-  endpoint_url.searchParams.set('response-content-type', descriptor.mime_type ?? 'text/plain; charset=UTF-8;');
+  download_path.searchParams.set('response-content-type', descriptor.mime_type ?? 'text/plain; charset=UTF-8;');
 
   // Generate Presigned Request
   const s3 = new AwsClient({
-    accessKeyId: env.LARGE_AWS_ACCESS_KEY_ID!,
-    secretAccessKey: env.LARGE_AWS_SECRET_ACCESS_KEY!,
+    accessKeyId: constants.LARGE_AWS_ACCESS_KEY_ID!,
+    secretAccessKey: constants.LARGE_AWS_SECRET_ACCESS_KEY!,
     service: 's3', // required
   });
 
-  const signed = await s3.sign(endpoint_url, {
+  const signed = await s3.sign(download_path, {
     method: 'GET',
     headers: {},
     aws: {
@@ -65,6 +71,8 @@ router.post('/create', async (request, env, ctx) => {
   let read_limit: number | undefined;
   let file_size: number | undefined;
   let file_hash: string | undefined;
+
+  // Content-Type: multipart/form-data
   if (content_type?.includes('multipart/form-data')) {
     const formdata = await request.formData();
     const title = formdata.get('title');
@@ -128,15 +136,15 @@ router.post('/create', async (request, env, ctx) => {
 
   const current = Date.now();
   const expiration = new Date(current + 14400 * 1000).getTime();
-  const endpoint_url = new URL(`${env.LARGE_ENDPOINT}/${uuid}`);
-  endpoint_url.searchParams.set('X-Amz-Expires', '900'); // Valid for 15 mins
+  const upload_path = new URL(`${env.LARGE_ENDPOINT}/${uuid}`);
+  upload_path.searchParams.set('X-Amz-Expires', '900'); // Valid for 15 mins
   const required_headers = {
     'Content-Length': file_size.toString(),
     'X-Amz-Content-Sha256': file_hash,
   };
 
   // Generate Presigned Request
-  const signed = await s3.sign(endpoint_url, {
+  const signed = await s3.sign(upload_path, {
     method: 'PUT',
     headers: required_headers,
     aws: {
@@ -180,7 +188,7 @@ router.post('/complete/:uuid', async (request, env, ctx) => {
   const { headers } = request;
   const { uuid } = request.params;
   // UUID format: [A-z0-9]{UUID_LENGTH}
-  if (uuid.length !== UUID_LENGTH) {
+  if (uuid.length !== constants.UUID_LENGTH) {
     return new Response('Invalid UUID.\n', {
       status: 442,
     });
@@ -208,7 +216,7 @@ router.post('/complete/:uuid', async (request, env, ctx) => {
 
   try {
     // Get object attributes
-    const objectmeta = await s3.fetch(`${env.LARGE_DOWNLOAD_ENDPOINT}/${uuid}?attributes`, {
+    const objectmeta = await s3.fetch(`${env.LARGE_ENDPOINT}/${uuid}?attributes`, {
       method: 'GET',
       headers: {
         'X-AMZ-Object-Attributes': 'ObjectSize',
@@ -224,7 +232,7 @@ router.post('/complete/:uuid', async (request, env, ctx) => {
       });
       const file_size: number = parsed.getobjectattributesresponse.objectsize._text;
       if (file_size !== descriptor.size) {
-        return new Response('This paste is not finishing the upload.\n', {
+        return new Response(`This paste is not finishing upload. (${file_size} != ${descriptor.size})\n`, {
           status: 400,
         });
       }
@@ -249,7 +257,7 @@ router.post('/complete/:uuid', async (request, env, ctx) => {
   const paste_info = {
     upload_completed: true,
     expired: new Date(expriation).toISOString(),
-    paste_info: get_paste_info_obj(uuid, descriptor),
+    paste_info: get_paste_info_obj(uuid, descriptor, env),
   };
 
   return new Response(JSON.stringify(paste_info));
@@ -258,7 +266,7 @@ router.post('/complete/:uuid', async (request, env, ctx) => {
 router.get('/:uuid', async (request, env, ctx) => {
   const { uuid } = request.params;
   // UUID format: [A-z0-9]{UUID_LENGTH}
-  if (uuid.length !== UUID_LENGTH) {
+  if (uuid.length !== constants.UUID_LENGTH) {
     return new Response('Invalid UUID.\n', {
       status: 442,
     });
@@ -284,7 +292,7 @@ router.get('/:uuid', async (request, env, ctx) => {
     });
   }
 
-  const signed_url = await get_presign_url(uuid, descriptor, env);
+  const signed_url = await get_presign_url(uuid, descriptor);
   const result = {
     uuid,
     expire: new Date(descriptor.expiration || 0).toISOString(),

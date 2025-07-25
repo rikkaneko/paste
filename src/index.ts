@@ -1,6 +1,6 @@
 /*
  * This file is part of paste.
- * Copyright (c) 2022-2024 Joe Ma <rikkaneko23@gmail.com>
+ * Copyright (c) 2022-2025 Joe Ma <rikkaneko23@gmail.com>
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as published by
@@ -18,14 +18,34 @@
 
 import { AwsClient } from 'aws4fetch';
 import { sha256 } from 'js-sha256';
-import { Router, error } from 'itty-router';
+import { Router, error, cors } from 'itty-router';
 import { ERequest, Env, PasteIndexEntry } from './types';
 import { serve_static } from './proxy';
 import { check_password_rules, get_paste_info, get_basic_auth, gen_id } from './utils';
-import { UUID_LENGTH, PASTE_WEB_URL, SERVICE_URL, CORS_DOMAIN } from './constant';
+import constants, { fetch_constant } from './constant';
 import { get_presign_url, router as large_upload } from './v2/large_upload';
 
-const router = Router<ERequest, [Env, ExecutionContext]>();
+// In favour of new cors() in itty-router v5
+const { preflight, corsify } = cors({
+  origin: (o) => {
+    if (constants?.CORS_DOMAIN) {
+      return o?.endsWith(constants.CORS_DOMAIN) ? o : undefined;
+    }
+  },
+  credentials: true,
+  allowMethods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
+});
+
+const router = Router<ERequest, [Env, ExecutionContext]>({
+  before: [
+    preflight,
+    (_, env) => {
+      fetch_constant(env);
+    },
+  ],
+  catch: error,
+  finally: [corsify],
+});
 
 // Shared common properties to all route
 router.all('*', (request) => {
@@ -39,27 +59,10 @@ router.all('*', (request) => {
   request.origin = headers.get('referer') ?? undefined;
 });
 
-// Handle preflighted CORS request
-router.options('*', (request) => {
-  if (!request.origin) return new Response(null);
-  const url = new URL(request.origin);
-  // Allow all subdomain of nekoid.cc
-  if (url.hostname.endsWith(CORS_DOMAIN)) {
-    return new Response(null, {
-      status: 204,
-      headers: {
-        'Access-Control-Allow-Origin': url.origin,
-        'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
-        Vary: 'Origin',
-      },
-    });
-  }
-});
-
 /* Static file path */
 // Web homepage
-router.get('/', (request) => {
-  return serve_static(PASTE_WEB_URL + '/paste.html', request.headers);
+router.get('/', (request, env, ctx) => {
+  return serve_static(env.PASTE_WEB_URL + '/paste.html', request.headers);
 });
 
 // Favicon
@@ -73,11 +76,11 @@ router.get('/favicon.ico', () => {
 });
 
 // Web script and style file
-router.get('/static/*', (request) => {
+router.get('/static/*', (request, env, ctx) => {
   const { url } = request;
   const { pathname } = new URL(url);
   const path = pathname.replace(/\/+$/, '') || '/';
-  return serve_static(PASTE_WEB_URL + path, request.headers);
+  return serve_static(env.PASTE_WEB_URL + path, request.headers);
 });
 
 // Create new paste (10MB limit)
@@ -95,7 +98,7 @@ router.post('/', async (request, env, ctx) => {
   let need_qrcode: boolean = false;
   let paste_type: string | undefined;
   let reply_json: boolean = false;
-  // Content-Type: multipart/form-data (deprecated)
+  // Content-Type: multipart/form-data
   if (content_type.includes('multipart/form-data')) {
     const formdata = await request.formData();
     const data: File | string | any = formdata.get('u');
@@ -114,6 +117,7 @@ router.post('/', async (request, env, ctx) => {
       buffer = await data.arrayBuffer();
       // Text
     } else {
+      // @ts-ignore
       buffer = new TextEncoder().encode(data);
       mime_type = 'text/plain; charset=UTF-8;';
     }
@@ -158,6 +162,7 @@ router.post('/', async (request, env, ctx) => {
       reply_json = true;
     }
   } else {
+    // HTTP API
     title = headers.get('x-paste-title') || undefined;
     mime_type = headers.get('x-paste-content-type') || undefined;
     password = headers.get('x-paste-pass') || undefined;
@@ -222,6 +227,9 @@ router.post('/', async (request, env, ctx) => {
     body: buffer,
   });
 
+  // Default paste type
+  paste_type = paste_type ? paste_type : 'paste';
+
   if (paste_type === 'link') {
     mime_type = 'text/x-uri';
   }
@@ -256,14 +264,14 @@ router.post('/', async (request, env, ctx) => {
 });
 
 // Handle large upload (> 25MB)
-router.all('/v2/large_upload/*', large_upload.handle);
+router.all('/v2/large_upload/*', large_upload.fetch);
 
 // Fetch paste by uuid [4-digit UUID]
 router.get('/:uuid/:option?', async (request, env, ctx) => {
   const { headers } = request;
   const { uuid, option } = request.params;
   // UUID format: [A-z0-9]{UUID_LENGTH}
-  if (uuid.length !== UUID_LENGTH) {
+  if (uuid.length !== constants.UUID_LENGTH) {
     return new Response('Invalid UUID.\n', {
       status: 442,
     });
@@ -343,7 +351,12 @@ router.get('/:uuid/:option?', async (request, env, ctx) => {
     }
 
     if (descriptor.size >= 209715200) {
-      const signed_url = await get_presign_url(uuid, descriptor, env);
+      const signed_url = await get_presign_url(uuid, descriptor);
+      if (signed_url == null) {
+        return new Response('No available download endpoint.\n', {
+          status: 404,
+        });
+      }
 
       ctx.waitUntil(
         env.PASTE_INDEX.put(uuid, JSON.stringify(descriptor), {
@@ -366,7 +379,7 @@ router.get('/:uuid/:option?', async (request, env, ctx) => {
   const cache = caches.default;
   const match_etag = headers.get('If-None-Match') || undefined;
   // Define the Request object as cache key
-  const req_key = new Request(`https://${SERVICE_URL}/${uuid}`, {
+  const req_key = new Request(`https://${env.SERVICE_URL}/${uuid}`, {
     method: 'GET',
     headers: match_etag
       ? {
@@ -493,7 +506,7 @@ router.delete('/:uuid', async (request, env, ctx) => {
   const { headers } = request;
   const { uuid } = request.params;
   // UUID format: [A-z0-9]{UUID_LENGTH}
-  if (uuid.length !== UUID_LENGTH) {
+  if (uuid.length !== constants.UUID_LENGTH) {
     return new Response('Invalid UUID.\n', {
       status: 442,
     });
@@ -557,7 +570,7 @@ router.delete('/:uuid', async (request, env, ctx) => {
   if (res.ok) {
     ctx.waitUntil(env.PASTE_INDEX.delete(uuid));
     // Invalidate CF cache
-    ctx.waitUntil(cache.delete(new Request(`https://${SERVICE_URL}/${uuid}`)));
+    ctx.waitUntil(cache.delete(new Request(`https://${env.SERVICE_URL}/${uuid}`)));
     return new Response('OK\n');
   } else {
     return new Response('Unable to process such request.\n', {
@@ -576,17 +589,6 @@ router.all('*', () => {
 export default {
   fetch: (req: ERequest, env: Env, ctx: ExecutionContext) =>
     router
-      .handle(req, env, ctx)
-      .catch(error)
-      // Apply CORS headers
-      .then((res: Response) => {
-        if (!req.origin) return res;
-        const url = new URL(req.origin);
-        // Allow all subdomain of nekoid.cc
-        if (url.hostname.endsWith(CORS_DOMAIN)) {
-          res.headers.set('Access-Control-Allow-Origin', url.origin);
-          res.headers.set('Vary', 'Origin');
-        }
-        return res;
-      }),
+      // Update with itty-router 5.x
+      .fetch(req, env, ctx),
 };

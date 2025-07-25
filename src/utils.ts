@@ -18,15 +18,18 @@
 
 import dedent from 'dedent-js';
 import { customAlphabet } from 'nanoid';
-import { SERVICE_URL, UUID_LENGTH } from './constant';
+import constants from './constant';
 import { PasteIndexEntry, Env } from './types';
 
-export const gen_id = customAlphabet('1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz', UUID_LENGTH);
+export const gen_id = customAlphabet(
+  '1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz',
+  constants.UUID_LENGTH
+);
 
-export function get_paste_info_obj(uuid: string, descriptor: PasteIndexEntry) {
+export function get_paste_info_obj(uuid: string, descriptor: PasteIndexEntry, env: Env) {
   const created = new Date(descriptor.last_modified);
   const expired = new Date(descriptor.expiration ?? descriptor.last_modified + 2419200000);
-  const link = `https://${SERVICE_URL}/${uuid}`;
+  const link = `https://${env.SERVICE_URL}/${uuid}`;
   const paste_info = {
     uuid,
     link,
@@ -53,7 +56,7 @@ export async function get_paste_info(
   need_qr: boolean = false,
   reply_json = false
 ): Promise<Response> {
-  const paste_info = get_paste_info_obj(uuid, descriptor);
+  const paste_info = get_paste_info_obj(uuid, descriptor, env);
 
   // Reply with JSON
   if (reply_json) {
