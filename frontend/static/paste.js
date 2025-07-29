@@ -271,7 +271,7 @@ $(function () {
 
       try {
         // Retrieve presigned URL for upload large paste
-        const res = await fetch(`${ENDPOINT}/v2/large_upload/create`, {
+        const res = await fetch(`${ENDPOINT}/api/large_upload/create`, {
           method: 'POST',
           body: filtered,
         });
@@ -294,7 +294,7 @@ $(function () {
           throw new Error(`Unable to upload paste: ${(await res1.text()) || `${res1.status} ${res1.statusText}`}`);
         }
         // Finialize the paste
-        const res2 = await fetch(`${ENDPOINT}/v2/large_upload/complete/${create_result.uuid}`, {
+        const res2 = await fetch(`${ENDPOINT}/api/large_upload/complete/${create_result.uuid}`, {
           method: 'POST',
         });
         if (res2.ok) {

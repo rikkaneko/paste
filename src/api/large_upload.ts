@@ -6,7 +6,7 @@ import { ERequest, Env, PasteIndexEntry } from '../types';
 import { gen_id, get_paste_info_obj } from '../utils';
 import constants from '../constant';
 
-export const router = Router<ERequest, [Env, ExecutionContext]>({ base: '/v2/large_upload' });
+export const router = Router<ERequest, [Env, ExecutionContext]>({ base: '/api/large_upload' });
 
 export async function get_presign_url(uuid: string, descriptor: PasteIndexEntry) {
   // Use cached presigned url if expiration is more than 10 mins

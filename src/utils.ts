@@ -29,7 +29,7 @@ export const gen_id = customAlphabet(
 export function get_paste_info_obj(uuid: string, descriptor: PasteIndexEntry, env: Env) {
   const created = new Date(descriptor.last_modified);
   const expired = new Date(descriptor.expiration ?? descriptor.last_modified + 2419200000);
-  const link = `https://${env.SERVICE_URL}/${uuid}`;
+  const link = `${env.SERVICE_URL}/${uuid}`;
   const paste_info = {
     uuid,
     link,

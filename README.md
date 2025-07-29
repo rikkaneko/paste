@@ -172,7 +172,7 @@ Delete paste by uuid. *If the password is set, this request requires additional 
 
 Update paste setting. *If the password is set, this request requires additional `x-pass` header*
 
-### POST /v2/large_upload/create
+### POST /api/large_upload/create
 
 Generate the presigned URL for upload large paste to the given S3 endpoint `LARGE_ENDPOINT` using HTTP `PUT` request.
 
@@ -189,11 +189,11 @@ Generate the presigned URL for upload large paste to the given S3 endpoint `LARG
 
 The `file-size` and `file-sha256sum` field is required.
 
-### POST /v2/large_upload/complete/\<uuid\>
+### POST /api/large_upload/complete/\<uuid\>
 
-Finialize the paste created from `/v2/large_upload/create`.
+Finialize the paste created from `/api/large_upload/create`.
 
-### GET /v2/large_upload/\<uuid\>
+### GET /api/large_upload/\<uuid\>
 
 Generate the presigned URL for upload large paste to the given S3 endpoint `LARGE_DOWNLOAD_ENDPOINT` using HTTP `GET` request.
 

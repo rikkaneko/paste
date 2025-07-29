@@ -23,7 +23,7 @@ import { ERequest, Env, PasteIndexEntry } from './types';
 import { serve_static } from './proxy';
 import { check_password_rules, get_paste_info, get_basic_auth, gen_id } from './utils';
 import constants, { fetch_constant } from './constant';
-import { get_presign_url, router as large_upload } from './v2/large_upload';
+import { get_presign_url, router as large_upload } from './api/large_upload';
 
 // In favour of new cors() in itty-router v5
 const { preflight, corsify } = cors({
@@ -38,10 +38,10 @@ const { preflight, corsify } = cors({
 
 const router = Router<ERequest, [Env, ExecutionContext]>({
   before: [
-    preflight,
     (_, env) => {
       fetch_constant(env);
     },
+    preflight,
   ],
   catch: error,
   finally: [corsify],
@@ -264,7 +264,7 @@ router.post('/', async (request, env, ctx) => {
 });
 
 // Handle large upload (> 25MB)
-router.all('/v2/large_upload/*', large_upload.fetch);
+router.all('/api/large_upload/*', large_upload.fetch);
 
 // Fetch paste by uuid [4-digit UUID]
 router.get('/:uuid/:option?', async (request, env, ctx) => {
@@ -379,7 +379,7 @@ router.get('/:uuid/:option?', async (request, env, ctx) => {
   const cache = caches.default;
   const match_etag = headers.get('If-None-Match') || undefined;
   // Define the Request object as cache key
-  const req_key = new Request(`https://${env.SERVICE_URL}/${uuid}`, {
+  const req_key = new Request(`${env.SERVICE_URL}/${uuid}`, {
     method: 'GET',
     headers: match_etag
       ? {
@@ -570,7 +570,7 @@ router.delete('/:uuid', async (request, env, ctx) => {
   if (res.ok) {
     ctx.waitUntil(env.PASTE_INDEX.delete(uuid));
     // Invalidate CF cache
-    ctx.waitUntil(cache.delete(new Request(`https://${env.SERVICE_URL}/${uuid}`)));
+    ctx.waitUntil(cache.delete(new Request(`${env.SERVICE_URL}/${uuid}`)));
     return new Response('OK\n');
   } else {
     return new Response('Unable to process such request.\n', {
