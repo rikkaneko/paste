@@ -207,7 +207,7 @@ router.post('/complete/:uuid', async (request, env, ctx) => {
   }
 
   const descriptor: PasteIndexEntry = JSON.parse(val);
-  if (descriptor.paste_type == PasteType.large_paste || !descriptor.upload_track?.pending_upload) {
+  if (descriptor.paste_type !== PasteType.large_paste || !descriptor.upload_track?.pending_upload) {
     return new Response('Invalid operation.\n', {
       status: 442,
     });
