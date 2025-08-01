@@ -8,7 +8,8 @@ export enum PasteType {
 }
 
 export const PasteTypeStr = (p: PasteType): string | undefined => {
-  return ['paste', 'link', 'large_paste', 'unknown'].at(p + 1);
+  if (p <= 0 || p >= 4) return 'unknown';
+  return ['paste', 'link', 'large_paste'].at(p - 1);
 };
 
 export const PasteTypeFrom = (s: string): PasteType => {
