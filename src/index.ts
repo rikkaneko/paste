@@ -19,11 +19,13 @@
 import { AwsClient } from 'aws4fetch';
 import { sha256 } from 'js-sha256';
 import { Router, error, cors } from 'itty-router';
-import { ERequest, Env, PasteIndexEntry } from './types';
+import { ERequest, Env } from './types';
 import { serve_static } from './proxy';
 import { check_password_rules, get_paste_info, get_basic_auth, gen_id } from './utils';
 import constants, { fetch_constant } from './constant';
 import { get_presign_url, router as large_upload } from './api/large_upload';
+import v2api from './v2/api';
+import { PasteIndexEntry, PasteTypeStr, PasteTypeFrom, PasteType } from './v2/schema';
 
 // In favour of new cors() in itty-router v5
 const { preflight, corsify } = cors({
@@ -44,7 +46,18 @@ const router = Router<ERequest, [Env, ExecutionContext]>({
     preflight,
   ],
   catch: error,
-  finally: [corsify],
+  finally: [
+    (res: Response) => {
+      if (res.headers.has('server')) return res;
+      return corsify(
+        new Response(res.body, {
+          status: res.status,
+          statusText: res.statusText,
+          headers: new Headers(res.headers),
+        })
+      );
+    },
+  ],
 });
 
 // Shared common properties to all route
@@ -165,7 +178,7 @@ router.post('/', async (request, env, ctx) => {
     // HTTP API
     title = headers.get('x-paste-title') || undefined;
     mime_type = headers.get('x-paste-content-type') || undefined;
-    password = headers.get('x-paste-pass') || undefined;
+    password = headers.get('x-pass') || undefined;
     paste_type = headers.get('x-paste-type') || undefined;
     need_qrcode = headers.get('x-paste-qr') === '1';
     reply_json = headers.get('x-json') === '1';
@@ -243,14 +256,20 @@ router.post('/', async (request, env, ctx) => {
 
   if (res.ok) {
     // Upload success
+    const current_time = Date.now();
+    // Temporary expiration time
+    const expiration = new Date(Date.now() + 2419200 * 1000).getTime(); // default 28 days
     const descriptor: PasteIndexEntry = {
+      uuid,
       title: title || undefined,
-      last_modified: Date.now(),
       password: password ? sha256(password).slice(0, 16) : undefined,
-      read_count_remain: read_limit ?? undefined,
+      access_n: 0,
+      max_access_n: read_limit ?? undefined,
       mime_type: mime_type || undefined,
-      type: paste_type,
-      size,
+      paste_type: PasteTypeFrom(paste_type),
+      file_size: size,
+      created_at: current_time,
+      expired_at: expiration,
     };
 
     // Key will be expired after 28 day if unmodified
@@ -265,6 +284,9 @@ router.post('/', async (request, env, ctx) => {
 
 // Handle large upload (> 25MB)
 router.all('/api/large_upload/*', large_upload.fetch);
+
+/* New Paste v2 RESTful API */
+router.all('/v2/*', v2api.fetch);
 
 // Fetch paste by uuid [4-digit UUID]
 router.get('/:uuid/:option?', async (request, env, ctx) => {
@@ -326,31 +348,32 @@ router.get('/:uuid/:option?', async (request, env, ctx) => {
   }
 
   // Check if access_count_remain entry present
-  if (descriptor.read_count_remain !== undefined) {
-    if (descriptor.read_count_remain <= 0) {
+  if (descriptor.max_access_n !== undefined) {
+    if (descriptor.access_n > descriptor.max_access_n) {
       return new Response('Paste expired.\n', {
         status: 410,
       });
     }
-    descriptor.read_count_remain--;
-    ctx.waitUntil(
-      env.PASTE_INDEX.put(uuid, JSON.stringify(descriptor), {
-        expiration: descriptor.last_modified / 1000 + 2419200,
-      })
-    );
   }
+
+  descriptor.access_n++;
+  ctx.waitUntil(
+    env.PASTE_INDEX.put(uuid, JSON.stringify(descriptor), {
+      expiration: descriptor.expired_at / 1000,
+    })
+  );
 
   // New added in 2.0
   // Handle large_paste
   // Use presigned url generation only if the file size larger than 200MB, use request forwarding instead
-  if (descriptor.type === 'large_paste') {
-    if (!descriptor.upload_completed) {
+  if (descriptor.paste_type === PasteType.large_paste) {
+    if (descriptor.upload_track?.pending_upload) {
       return new Response('This paste is not yet finalized.\n', {
         status: 400,
       });
     }
 
-    if (descriptor.size >= 209715200) {
+    if (descriptor.file_size >= 209715200) {
       const signed_url = await get_presign_url(uuid, descriptor);
       if (signed_url == null) {
         return new Response('No available download endpoint.\n', {
@@ -360,7 +383,7 @@ router.get('/:uuid/:option?', async (request, env, ctx) => {
 
       ctx.waitUntil(
         env.PASTE_INDEX.put(uuid, JSON.stringify(descriptor), {
-          expiration: descriptor.expiration! / 1000,
+          expiration: descriptor.expired_at / 1000,
         })
       );
 
@@ -392,10 +415,11 @@ router.get('/:uuid/:option?', async (request, env, ctx) => {
   let res = await cache.match(req_key);
   if (res === undefined) {
     // Use althernative endpoint and credentials for large_type
-    const endpoint = descriptor.type === 'large_paste' ? env.LARGE_DOWNLOAD_ENDPOINT : env.ENDPOINT;
-    const access_key_id = descriptor.type === 'large_paste' ? env.LARGE_AWS_ACCESS_KEY_ID! : env.AWS_ACCESS_KEY_ID;
+    const endpoint = descriptor.paste_type == PasteType.large_paste ? env.LARGE_DOWNLOAD_ENDPOINT : env.ENDPOINT;
+    const access_key_id =
+      descriptor.paste_type == PasteType.large_paste ? env.LARGE_AWS_ACCESS_KEY_ID! : env.AWS_ACCESS_KEY_ID;
     const secret_access_key =
-      descriptor.type === 'large_paste' ? env.LARGE_AWS_SECRET_ACCESS_KEY! : env.AWS_SECRET_ACCESS_KEY;
+      descriptor.paste_type == PasteType.large_paste ? env.LARGE_AWS_SECRET_ACCESS_KEY! : env.AWS_SECRET_ACCESS_KEY;
 
     const s3 = new AwsClient({
       accessKeyId: access_key_id,
@@ -414,9 +438,16 @@ router.get('/:uuid/:option?', async (request, env, ctx) => {
     });
 
     // Reserve ETag header
-    res = new Response(origin.body, { status: origin.status });
     const etag = origin.headers.get('etag');
-    if (etag) res.headers.append('etag', etag);
+    res = new Response(origin.body, {
+      status: origin.status,
+      headers:
+        etag !== null
+          ? {
+              etag,
+            }
+          : undefined,
+    });
 
     if (res.status == 404) {
       // UUID exists in index but not found in remote object storage service, probably expired
@@ -442,7 +473,7 @@ router.get('/:uuid/:option?', async (request, env, ctx) => {
     else res.headers.delete('content-type');
 
     // Link redirection
-    if (descriptor.type === 'link') {
+    if (descriptor.paste_type == PasteType.link) {
       const content = await res.clone().arrayBuffer();
       try {
         const href = new TextDecoder().decode(content);
@@ -519,12 +550,6 @@ router.delete('/:uuid', async (request, env, ctx) => {
   }
   const descriptor: PasteIndexEntry = JSON.parse(val);
 
-  if (descriptor.editable !== undefined && !descriptor.editable) {
-    return new Response('This paste is immutable.\n', {
-      status: 405,
-    });
-  }
-
   // Check password if needed
   if (descriptor.password !== undefined) {
     if (headers.has('x-pass')) {
@@ -543,7 +568,7 @@ router.delete('/:uuid', async (request, env, ctx) => {
 
   const cache = caches.default;
   // Distinguish the endpoint for large_paste and normal paste
-  if (descriptor.type === 'large_paste') {
+  if (descriptor.paste_type == PasteType.large_paste) {
     if (!env.LARGE_AWS_ACCESS_KEY_ID || !env.LARGE_AWS_SECRET_ACCESS_KEY || !env.LARGE_ENDPOINT) {
       return new Response('Unsupported paste type.\n', {
         status: 501,
@@ -552,10 +577,11 @@ router.delete('/:uuid', async (request, env, ctx) => {
   }
 
   // Use althernative endpoint and credentials for large_type
-  const endpoint = descriptor.type === 'large_paste' ? env.LARGE_DOWNLOAD_ENDPOINT : env.ENDPOINT;
-  const access_key_id = descriptor.type === 'large_paste' ? env.LARGE_AWS_ACCESS_KEY_ID! : env.AWS_ACCESS_KEY_ID;
+  const endpoint = descriptor.paste_type == PasteType.large_paste ? env.LARGE_DOWNLOAD_ENDPOINT : env.ENDPOINT;
+  const access_key_id =
+    descriptor.paste_type == PasteType.large_paste ? env.LARGE_AWS_ACCESS_KEY_ID! : env.AWS_ACCESS_KEY_ID;
   const secret_access_key =
-    descriptor.type === 'large_paste' ? env.LARGE_AWS_SECRET_ACCESS_KEY! : env.AWS_SECRET_ACCESS_KEY;
+    descriptor.paste_type == PasteType.large_paste ? env.LARGE_AWS_SECRET_ACCESS_KEY! : env.AWS_SECRET_ACCESS_KEY;
 
   const s3 = new AwsClient({
     accessKeyId: access_key_id,

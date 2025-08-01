@@ -19,31 +19,33 @@
 import dedent from 'dedent-js';
 import { customAlphabet } from 'nanoid';
 import constants from './constant';
-import { PasteIndexEntry, Env } from './types';
+import { Env } from './types';
+import { PasteIndexEntry, PasteTypeStr } from './v2/schema';
 
 export const gen_id = customAlphabet(
   '1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz',
   constants.UUID_LENGTH
 );
 
+// Paste API Response (v1)
 export function get_paste_info_obj(uuid: string, descriptor: PasteIndexEntry, env: Env) {
-  const created = new Date(descriptor.last_modified);
-  const expired = new Date(descriptor.expiration ?? descriptor.last_modified + 2419200000);
+  const created = new Date(descriptor.created_at);
+  const expired = new Date(descriptor.expired_at);
   const link = `${env.SERVICE_URL}/${uuid}`;
   const paste_info = {
     uuid,
     link,
     link_qr: 'https://qrcode.nekoid.cc/?' + new URLSearchParams({ q: link, type: 'svg' }),
-    type: descriptor.type ?? 'paste',
+    type: PasteTypeStr(descriptor.paste_type),
     title: descriptor.title?.trim(),
     mime_type: descriptor.mime_type,
-    human_readable_size: `${to_human_readable_size(descriptor.size)}`,
-    size: descriptor.size,
+    human_readable_size: `${to_human_readable_size(descriptor.file_size)}`,
+    size: descriptor.file_size,
     password: !!descriptor.password,
-    read_count_remain: descriptor.read_count_remain,
+    access_n: descriptor.access_n,
+    max_access_n: descriptor.max_access_n,
     created: created.toISOString(),
     expired: expired.toISOString(),
-    update_completed: descriptor.upload_completed ?? undefined, // only for large_paste
   };
   return paste_info;
 }
@@ -77,13 +79,14 @@ export async function get_paste_info(
     mime-type: ${paste_info.mime_type ?? '-'}
     size: ${paste_info.size} bytes (${paste_info.human_readable_size})
     password: ${paste_info.password}
-    remaining read count: ${
-      paste_info.read_count_remain !== undefined
-        ? paste_info.read_count_remain
-          ? paste_info.read_count_remain
-          : `0 (expired)`
-        : '-'
+    access times: ${
+      paste_info.max_access_n !== undefined
+        ? paste_info.max_access_n - paste_info.access_n > 0
+          ? `${paste_info.access_n} / ${paste_info.max_access_n}`
+          : `${paste_info.access_n} / ${paste_info.max_access_n} (expired)`
+        : paste_info.access_n
     }
+    max_access_n: ${paste_info.max_access_n ?? '-'}
     created at ${paste_info.created}
     expired at ${paste_info.expired}
     `;

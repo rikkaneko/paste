@@ -8,15 +8,17 @@ export type ERequest = {
 
 export type PASTE_TYPES = 'paste' | 'text' | 'link' | 'large_paste';
 
+// Deprecated
 export interface PasteIndexEntry {
   title?: string;
   mime_type?: string;
   last_modified: number;
   expiration?: number; // New added in 2.0
-  size: number;
+  file_size: number;
   password?: string;
   editable?: boolean; // Default: False (unsupported)
-  read_count_remain?: number;
+  access_n: number;
+  max_access_n?: number;
   type: PASTE_TYPES;
   // Only apply when large_paste
   upload_completed?: boolean;
@@ -44,4 +46,5 @@ export interface Env {
 
 export interface Config extends Env {
   UUID_LENGTH: number;
+  enable_large_upload: boolean;
 }

@@ -2,9 +2,10 @@ import { Router } from 'itty-router';
 import { sha256 } from 'js-sha256';
 import { AwsClient } from 'aws4fetch';
 import { xml2js } from 'xml-js';
-import { ERequest, Env, PasteIndexEntry } from '../types';
+import { ERequest, Env } from '../types';
 import { gen_id, get_paste_info_obj } from '../utils';
 import constants from '../constant';
+import { PasteIndexEntry, PasteType } from '../v2/schema';
 
 export const router = Router<ERequest, [Env, ExecutionContext]>({ base: '/api/large_upload' });
 
@@ -164,15 +165,19 @@ router.post('/create', async (request, env, ctx) => {
   };
 
   const descriptor: PasteIndexEntry = {
+    uuid,
     title: file_title || undefined,
     mime_type: file_mime || undefined,
-    last_modified: current,
-    expiration: new Date(Date.now() + 900 * 1000).getTime(),
+    created_at: current,
+    expired_at: new Date(Date.now() + 900 * 1000).getTime(),
     password: password ? sha256(password).slice(0, 16) : undefined,
-    read_count_remain: read_limit ?? undefined,
-    type: 'large_paste',
-    size: file_size,
-    upload_completed: false,
+    access_n: 0,
+    max_access_n: read_limit ?? undefined,
+    paste_type: PasteType.large_paste,
+    file_size: file_size,
+    upload_track: {
+      pending_upload: true,
+    },
   };
 
   ctx.waitUntil(
@@ -202,7 +207,7 @@ router.post('/complete/:uuid', async (request, env, ctx) => {
   }
 
   const descriptor: PasteIndexEntry = JSON.parse(val);
-  if (descriptor.type !== 'large_paste' || descriptor.upload_completed) {
+  if (descriptor.paste_type == PasteType.large_paste || !descriptor.upload_track?.pending_upload) {
     return new Response('Invalid operation.\n', {
       status: 442,
     });
@@ -231,8 +236,8 @@ router.post('/complete/:uuid', async (request, env, ctx) => {
         elementNameFn: (val) => val.toLowerCase(),
       });
       const file_size: number = parsed.getobjectattributesresponse.objectsize._text;
-      if (file_size !== descriptor.size) {
-        return new Response(`This paste is not finishing upload. (${file_size} != ${descriptor.size})\n`, {
+      if (file_size !== descriptor.file_size) {
+        return new Response(`This paste is not finishing upload. (${file_size} != ${descriptor.file_size})\n`, {
           status: 400,
         });
       }
@@ -249,9 +254,10 @@ router.post('/complete/:uuid', async (request, env, ctx) => {
 
   const current = Date.now();
   const expriation = new Date(Date.now() + 2419200 * 1000).getTime(); // default 28 days
-  descriptor.upload_completed = true;
-  descriptor.last_modified = current;
-  descriptor.expiration = expriation;
+  // Remove unneeded propty
+  delete descriptor.upload_track;
+  descriptor.created_at = current;
+  descriptor.expired_at = expriation;
   ctx.waitUntil(env.PASTE_INDEX.put(uuid, JSON.stringify(descriptor), { expirationTtl: 2419200 }));
 
   const paste_info = {
@@ -280,13 +286,13 @@ router.get('/:uuid', async (request, env, ctx) => {
   }
 
   const descriptor: PasteIndexEntry = JSON.parse(val);
-  if (descriptor.type !== 'large_paste') {
+  if (descriptor.paste_type == PasteType.large_paste) {
     return new Response('Invalid operation.\n', {
       status: 400,
     });
   }
 
-  if (!descriptor.upload_completed) {
+  if (!descriptor.upload_track?.pending_upload) {
     return new Response('This paste is not yet finalized.\n', {
       status: 400,
     });
@@ -295,7 +301,7 @@ router.get('/:uuid', async (request, env, ctx) => {
   const signed_url = await get_presign_url(uuid, descriptor);
   const result = {
     uuid,
-    expire: new Date(descriptor.expiration || 0).toISOString(),
+    expire: new Date(descriptor.expired_at).toISOString(),
     signed_url,
   };
 
