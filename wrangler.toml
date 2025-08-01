@@ -10,7 +10,7 @@ services = [
 ]
 
 [vars]
-SERVICE_URL = "pb.nekoid.cc"
+SERVICE_URL = "https://pb.nekoid.cc"
 PASTE_WEB_URL = "https://raw.githubusercontent.com/rikkaneko/paste/main/frontend"
 CORS_DOMAIN = "nekoid.cc"
 

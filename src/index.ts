@@ -359,7 +359,7 @@ router.get('/:uuid/:option?', async (request, env, ctx) => {
   descriptor.access_n++;
   ctx.waitUntil(
     env.PASTE_INDEX.put(uuid, JSON.stringify(descriptor), {
-      expiration: descriptor.expired_at / 1000,
+      expirationTtl: descriptor.expired_at / 1000,
     })
   );
 
@@ -383,7 +383,7 @@ router.get('/:uuid/:option?', async (request, env, ctx) => {
 
       ctx.waitUntil(
         env.PASTE_INDEX.put(uuid, JSON.stringify(descriptor), {
-          expiration: descriptor.expired_at / 1000,
+          expirationTtl: descriptor.expired_at / 1000,
         })
       );
 
