@@ -80,7 +80,7 @@ router.post('/info/:uuid', async (req, env, ctx) => {
       );
     }
     // Check password and username should be empty
-    if (cert.length != 0 || descriptor.password !== sha256(cert).slice(0, 16)) {
+    if (descriptor.password !== sha256(cert as string).slice(0, 16)) {
       return PasteAPIRepsonse.build(403, 'Invalid access credentials.');
     }
   }
@@ -91,13 +91,23 @@ router.post('/info/:uuid', async (req, env, ctx) => {
 
   // Change paste info logic
   // Explict assign the fields
-  const updated_descriptor = {
-    ...descriptor,
+  const update: PasteInfoUpdateParams = {
     password: params.password ? sha256(params.password).slice(0, 16) : undefined,
     max_access_n: params.max_access_n,
     title: params.title,
     mime_type: params.mime_type,
-    expired_at: params.expired_at ? params.expired_at : descriptor.expired_at,
+    expired_at: params.expired_at,
+  };
+
+  // Remove redundant fields
+  Object.keys(update).forEach(
+    (key) =>
+      update[key as keyof PasteInfoUpdateParams] === undefined && delete update[key as keyof PasteInfoUpdateParams]
+  );
+
+  const updated_descriptor: PasteIndexEntry = {
+    ...descriptor,
+    ...update,
   };
 
   ctx.waitUntil(env.PASTE_INDEX.put(uuid, JSON.stringify(updated_descriptor), { expirationTtl: 2419200 }));
@@ -289,6 +299,11 @@ router.delete('/:uuid', async (req, env, ctx) => {
 router.post('/upload', async (req, env, ctx) => {
   // TODO Upload paste logic
   return PasteAPIRepsonse.build(200, 'This endpoint is not ready.');
+});
+
+// Fallback route
+router.all('*', async () => {
+  return PasteAPIRepsonse.build(403, 'Invalid endpoint.');
 });
 
 export default router;

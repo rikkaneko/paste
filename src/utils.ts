@@ -171,7 +171,8 @@ export function get_auth(headers: Headers, required_scheme: string): string | [s
 
       return [decoded.slice(0, index), decoded.slice(index + 1)];
     } else if (scheme == 'Bearer') {
-      return encoded;
+      if (encoded.length > 0) return encoded;
+      else null;
     }
   }
   return null;
