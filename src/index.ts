@@ -25,7 +25,7 @@ import { check_password_rules, get_paste_info, get_auth, gen_id } from './utils'
 import constants, { fetch_constant } from './constant';
 import { get_presign_url, router as large_upload } from './api/large_upload';
 import v2api from './v2/api';
-import { PasteIndexEntry, PasteTypeStr, PasteTypeFrom, PasteType } from './v2/schema';
+import { PasteIndexEntry, PasteTypeFrom, PasteType } from './v2/schema';
 
 // In favour of new cors() in itty-router v5
 const { preflight, corsify } = cors({
@@ -79,13 +79,8 @@ router.get('/', (request, env, ctx) => {
 });
 
 // Favicon
-router.get('/favicon.ico', () => {
-  return new Response(null, {
-    headers: {
-      'cache-control': 'public, max-age=172800',
-    },
-    status: 404,
-  });
+router.get('/favicon.png', (request, env, ctx) => {
+  return serve_static(env.PASTE_WEB_URL + '/favicon.png', request.headers);
 });
 
 // Web script and style file

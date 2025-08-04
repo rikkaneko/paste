@@ -25,6 +25,8 @@ export async function serve_static(path: string, req_headers?: Headers): Promise
   else if (path.endsWith('.css')) mime = 'text/css; charset=UTF-8;';
   else if (path.endsWith('.html')) mime = 'text/html; charset=UTF-8;';
   else if (path.endsWith('.ico')) mime = 'image/x-icon';
+  else if (path.endsWith('.png')) mime = 'image/png';
+  else if (path.endsWith('.jpg')) mime = 'image/jpg';
   else
     return new Response(null, {
       headers: {
