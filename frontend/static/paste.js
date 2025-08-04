@@ -109,8 +109,16 @@ function build_paste_modal(paste_info, show_qrcode = true, saved = true, one_tim
 
   Object.entries(paste_info).forEach(([key, val]) => {
     if (key.includes('link')) return;
-    $(`#paste_info_${key}`).text(val ?? '-');
+    $(`#paste_info_${key}`).text(val ?? '');
   });
+
+  if (paste_info.max_access_n !== undefined) {
+    $('#paste_info_access_separator').show();
+    $('#paste_info_max_access_n').show();
+  } else {
+    $('#paste_info_access_separator').hide();
+    $('#paste_info_max_access_n').hide();
+  }
 
   let modal = new bootstrap.Modal(paste_modal.modal);
   if (!build_only) modal.show();

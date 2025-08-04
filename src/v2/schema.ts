@@ -70,8 +70,8 @@ export interface PasteCreateParams {
   expired_at?: number;
 }
 
-export const PasteCreateParamsValidator = new Validator({
-  password: new Rule({ type: 'string', optional: true, notEmpty: true }),
+const param_rules = {
+  password: new Rule({ type: 'password', optional: true, notEmpty: true, maxLength: 40 }),
   max_access_n: new Rule({ type: 'int', optional: true, min: 1 }),
   title: new Rule({ type: 'string', optional: true, notEmpty: true }),
   mime_type: new Rule({ type: 'string', optional: true, notEmpty: true }),
@@ -83,7 +83,9 @@ export const PasteCreateParamsValidator = new Validator({
     min: Date.now(),
     max: new Date(Date.now() + 2419200 * 1000).getTime(), // max. 28 days
   }),
-});
+};
+
+export const PasteCreateParamsValidator = new Validator(param_rules);
 
 export interface PasteCreateUploadResponse {
   uuid: string;
@@ -94,6 +96,19 @@ export interface PasteCreateUploadResponse {
     'X-Amz-Content-Sha256': string;
   };
 }
+
+export interface PasteInfoUpdateParams {
+  password?: string;
+  max_access_n?: number;
+  title?: string;
+  mime_type?: string;
+  expired_at?: number;
+}
+
+// Omit non-editable fields
+const { file_size, file_hash, ...editabe_fiels } = param_rules;
+
+export const PasteInfoUpdateParamsValidator = new Validator(editabe_fiels);
 
 export class PasteAPIRepsonse {
   static build(
@@ -129,6 +144,7 @@ export class PasteAPIRepsonse {
   static info(descriptor: PasteIndexEntry) {
     const paste_info: PasteInfo = {
       uuid: descriptor.uuid,
+      title: descriptor.title,
       paste_type: descriptor.paste_type,
       file_size: descriptor.file_size,
       mime_type: descriptor.mime_type,

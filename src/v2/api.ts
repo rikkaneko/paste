@@ -9,8 +9,10 @@ import {
   PasteIndexEntry,
   PasteCreateUploadResponse,
   PasteType,
+  PasteInfoUpdateParams,
+  PasteInfoUpdateParamsValidator,
 } from './schema';
-import { gen_id } from '../utils';
+import { gen_id, get_auth } from '../utils';
 import { AwsClient } from 'aws4fetch';
 import { sha256 } from 'js-sha256';
 import { xml2js } from 'xml-js';
@@ -35,6 +37,71 @@ router.get('/info/:uuid', async (req, env, ctx) => {
   }
   const descriptor: PasteIndexEntry = JSON.parse(val);
   return PasteAPIRepsonse.info(descriptor);
+});
+
+/* POST /info/:uuid
+ * Header: Authorization: Basic <password>
+ *
+ * Response:
+ * <empty> | <Error>
+ */
+router.post('/info/:uuid', async (req, env, ctx) => {
+  const { uuid } = req.params;
+  if (uuid.length !== constants.UUID_LENGTH) {
+    new PasteAPIRepsonse();
+    return PasteAPIRepsonse.build(442, 'Invalid UUID.');
+  }
+  const val = await env.PASTE_INDEX.get(uuid);
+  if (val === null) {
+    return PasteAPIRepsonse.build(404, 'Paste not found.');
+  }
+  const descriptor: PasteIndexEntry = JSON.parse(val);
+
+  let params: PasteInfoUpdateParams | undefined;
+  try {
+    const _params: PasteInfoUpdateParams = await req.json();
+    if (!PasteInfoUpdateParamsValidator.test(_params)) {
+      return PasteAPIRepsonse.build(400, 'Invalid request fields.');
+    }
+    params = _params;
+  } catch (e) {
+    return PasteAPIRepsonse.build(400, 'Invalid request.');
+  }
+
+  // Check password if needed
+  if (descriptor.password !== undefined) {
+    const { headers } = req;
+    let cert = get_auth(headers, 'Bearer');
+    // Error occurred when parsing the header
+    if (cert === null) {
+      return PasteAPIRepsonse.build(
+        403,
+        'This paste is password-protected. You must provide the current access credentials to update its metadata.'
+      );
+    }
+    // Check password and username should be empty
+    if (cert.length != 0 || descriptor.password !== sha256(cert).slice(0, 16)) {
+      return PasteAPIRepsonse.build(403, 'Invalid access credentials.');
+    }
+  }
+
+  if (descriptor.upload_track?.pending_upload) {
+    return PasteAPIRepsonse.build(400, 'This paste is not yet finalized.');
+  }
+
+  // Change paste info logic
+  // Explict assign the fields
+  const updated_descriptor = {
+    ...descriptor,
+    password: params.password ? sha256(params.password).slice(0, 16) : undefined,
+    max_access_n: params.max_access_n,
+    title: params.title,
+    mime_type: params.mime_type,
+    expired_at: params.expired_at ? params.expired_at : descriptor.expired_at,
+  };
+
+  ctx.waitUntil(env.PASTE_INDEX.put(uuid, JSON.stringify(updated_descriptor), { expirationTtl: 2419200 }));
+  return PasteAPIRepsonse.info(updated_descriptor);
 });
 
 /* POST /create

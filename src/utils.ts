@@ -150,28 +150,31 @@ export function check_password_rules(password: string): boolean {
   return password.match('^[A-z0-9]{1,}$') !== null;
 }
 // Extract username and password from Basic Authorization header
-export function get_basic_auth(headers: Headers): [string, string] | null {
+export function get_auth(headers: Headers, required_scheme: string): string | [string, string] | null {
   if (headers.has('Authorization')) {
     const auth = headers.get('Authorization');
     const [scheme, encoded] = auth!.split(' ');
     // Validate authorization header format
-    if (!encoded || scheme !== 'Basic') {
+    if (!encoded || scheme !== required_scheme) {
       return null;
     }
-    // Decode base64 to string (UTF-8)
-    const buffer = Uint8Array.from(atob(encoded), (character) => character.charCodeAt(0));
-    const decoded = new TextDecoder().decode(buffer).normalize();
-    const index = decoded.indexOf(':');
+    if (scheme == 'Basic') {
+      // Decode base64 to string (UTF-8)
+      const buffer = Uint8Array.from(atob(encoded), (character) => character.charCodeAt(0));
+      const decoded = new TextDecoder().decode(buffer).normalize();
+      const index = decoded.indexOf(':');
 
-    // Check if user & password are split by the first colon and MUST NOT contain control characters.
-    if (index === -1 || decoded.match('[\\0-\x1F\x7F]')) {
-      return null;
+      // Check if user & password are split by the first colon and MUST NOT contain control characters.
+      if (index === -1 || decoded.match('[\\0-\x1F\x7F]')) {
+        return null;
+      }
+
+      return [decoded.slice(0, index), decoded.slice(index + 1)];
+    } else if (scheme == 'Bearer') {
+      return encoded;
     }
-
-    return [decoded.slice(0, index), decoded.slice(index + 1)];
-  } else {
-    return null;
   }
+  return null;
 }
 
 function to_human_readable_size(bytes: number): string {

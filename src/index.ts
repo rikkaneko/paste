@@ -21,7 +21,7 @@ import { sha256 } from 'js-sha256';
 import { Router, error, cors } from 'itty-router';
 import { ERequest, Env } from './types';
 import { serve_static } from './proxy';
-import { check_password_rules, get_paste_info, get_basic_auth, gen_id } from './utils';
+import { check_password_rules, get_paste_info, get_auth, gen_id } from './utils';
 import constants, { fetch_constant } from './constant';
 import { get_presign_url, router as large_upload } from './api/large_upload';
 import v2api from './v2/api';
@@ -316,7 +316,7 @@ router.get('/:uuid/:option?', async (request, env, ctx) => {
   // Check password if needed
   if (descriptor.password !== undefined) {
     if (headers.has('Authorization')) {
-      let cert = get_basic_auth(headers);
+      let cert = get_auth(headers, 'Basic');
       // Error occurred when parsing the header
       if (cert === null) {
         return new Response('Invalid Authorization header.', {
