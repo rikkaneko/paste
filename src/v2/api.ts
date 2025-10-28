@@ -5,7 +5,6 @@ import {
   PasteAPIRepsonse,
   PasteCreateParams,
   PasteCreateParamsValidator,
-  PasteInfo,
   PasteIndexEntry,
   PasteCreateUploadResponse,
   PasteType,
