@@ -1,6 +1,6 @@
 /*
  * This file is part of paste.
- * Copyright (c) 2023 Joe Ma <rikkaneko23@gmail.com>
+ * Copyright (c) 2022-2025 Joe Ma <rikkaneko23@gmail.com>
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as published by
@@ -133,7 +133,7 @@ function build_paste_modal(paste_info, show_qrcode = true, saved = true, one_tim
  */
 async function get_file_hash(file) {
   const word_arr = CryptoJS.lib.WordArray.create(await file.arrayBuffer());
-  const file_hash = CryptoJS.SHA256(word_arr).toString(CryptoJS.enc.Hex);
+  const file_hash = CryptoJS.SHA256(word_arr).toString(CryptoJS.enc.Base64);
   return file_hash;
 }
 
@@ -292,9 +292,7 @@ $(function () {
         const create_result = await res.json();
         const res1 = await fetch(create_result.signed_url, {
           method: 'PUT',
-          headers: {
-            'X-Amz-Content-Sha256': file_hash,
-          },
+          headers: create_result.required_headers,
           body: content,
         });
 

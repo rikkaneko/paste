@@ -16,7 +16,6 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { AwsClient } from 'aws4fetch';
 import { sha256 } from 'js-sha256';
 import { Router, error, cors } from 'itty-router';
 import { ERequest, Env } from './types';
@@ -26,6 +25,7 @@ import constants, { fetch_constant } from './constant';
 import { get_presign_url, router as large_upload } from './api/large_upload';
 import v2api from './v2/api';
 import { PasteIndexEntry, PasteTypeFrom, PasteType } from './v2/schema';
+import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 
 // In favour of new cors() in itty-router v5
 const { preflight, corsify } = cors({
@@ -224,16 +224,23 @@ router.post('/', async (request, env, ctx) => {
     });
   }
 
-  const s3 = new AwsClient({
-    accessKeyId: env.AWS_ACCESS_KEY_ID,
-    secretAccessKey: env.AWS_SECRET_ACCESS_KEY,
-    service: 's3', // required
+  const s3 = new S3Client({
+    region: 'us-east-1',
+    endpoint: env.ENDPOINT,
+    credentials: {
+      accessKeyId: env.AWS_ACCESS_KEY_ID!,
+      secretAccessKey: env.AWS_SECRET_ACCESS_KEY!,
+    },
+    forcePathStyle: true,
   });
 
-  const res = await s3.fetch(`${env.ENDPOINT}/${uuid}`, {
-    method: 'PUT',
-    body: buffer,
-  });
+  const res = await s3.send(
+    new PutObjectCommand({
+      Bucket: 'paste',
+      Key: uuid,
+      Body: buffer,
+    })
+  );
 
   // Default paste type
   paste_type = paste_type ? paste_type : 'paste';
@@ -249,7 +256,7 @@ router.post('/', async (request, env, ctx) => {
     });
   }
 
-  if (res.ok) {
+  if (res.$metadata.httpStatusCode === 200) {
     // Upload success
     const current_time = Date.now();
     // Temporary expiration time
@@ -416,32 +423,29 @@ router.get('/:uuid/:option?', async (request, env, ctx) => {
     const secret_access_key =
       descriptor.paste_type == PasteType.large_paste ? env.LARGE_AWS_SECRET_ACCESS_KEY! : env.AWS_SECRET_ACCESS_KEY;
 
-    const s3 = new AwsClient({
-      accessKeyId: access_key_id,
-      secretAccessKey: secret_access_key,
-      service: 's3', // required
+    const s3 = new S3Client({
+      region: 'us-east-1',
+      endpoint: env.ENDPOINT,
+      credentials: {
+        accessKeyId: env.AWS_ACCESS_KEY_ID!,
+        secretAccessKey: env.AWS_SECRET_ACCESS_KEY!,
+      },
+      forcePathStyle: true,
     });
 
-    // Fetch form origin if not hit cache
-    let origin = await s3.fetch(`${endpoint}/${uuid}`, {
-      method: 'GET',
-      headers: match_etag
-        ? {
-            'if-none-match': match_etag,
-          }
-        : undefined,
-    });
+    const origin = await s3.send(
+      new GetObjectCommand({
+        Bucket: 'paste',
+        Key: uuid,
+        IfNoneMatch: match_etag,
+      })
+    );
 
     // Reserve ETag header
-    const etag = origin.headers.get('etag');
-    res = new Response(origin.body, {
-      status: origin.status,
-      headers:
-        etag !== null
-          ? {
-              etag,
-            }
-          : undefined,
+    const etag = origin.ETag;
+    res = new Response(origin.Body, {
+      status: origin.$metadata.httpStatusCode,
+      headers: etag ? { etag } : undefined,
     });
 
     if (res.status == 404) {
@@ -578,17 +582,24 @@ router.delete('/:uuid', async (request, env, ctx) => {
   const secret_access_key =
     descriptor.paste_type == PasteType.large_paste ? env.LARGE_AWS_SECRET_ACCESS_KEY! : env.AWS_SECRET_ACCESS_KEY;
 
-  const s3 = new AwsClient({
-    accessKeyId: access_key_id,
-    secretAccessKey: secret_access_key,
-    service: 's3', // required
+  const s3 = new S3Client({
+    region: 'us-east-1',
+    endpoint: env.ENDPOINT,
+    credentials: {
+      accessKeyId: env.AWS_ACCESS_KEY_ID!,
+      secretAccessKey: env.AWS_SECRET_ACCESS_KEY!,
+    },
+    forcePathStyle: true,
   });
 
-  let res = await s3.fetch(`${endpoint}/${uuid}`, {
-    method: 'DELETE',
-  });
+  const res = await s3.send(
+    new DeleteObjectCommand({
+      Bucket: 'paste',
+      Key: uuid,
+    })
+  );
 
-  if (res.ok) {
+  if (res.$metadata.httpStatusCode === 200) {
     ctx.waitUntil(env.PASTE_INDEX.delete(uuid));
     // Invalidate CF cache
     ctx.waitUntil(cache.delete(new Request(`${env.SERVICE_URL}/${uuid}`)));

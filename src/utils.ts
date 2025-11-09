@@ -186,3 +186,12 @@ function to_human_readable_size(bytes: number): string {
   }
   return size;
 }
+
+function hexToBase64(hexString: string): string {
+  let binaryString = '';
+  for (let i = 0; i < hexString.length; i += 2) {
+    const byte = parseInt(hexString.substr(i, 2), 16);
+    binaryString += String.fromCharCode(byte);
+  }
+  return btoa(binaryString);
+}

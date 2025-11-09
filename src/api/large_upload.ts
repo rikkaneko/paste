@@ -1,7 +1,7 @@
 import { Router } from 'itty-router';
 import { sha256 } from 'js-sha256';
-import { AwsClient } from 'aws4fetch';
-import { xml2js } from 'xml-js';
+import { S3Client, PutObjectCommand, HeadObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { ERequest, Env } from '../types';
 import { gen_id, get_paste_info_obj } from '../utils';
 import constants from '../constant';
@@ -25,33 +25,34 @@ export async function get_presign_url(uuid: string, descriptor: PasteIndexEntry)
     return null;
   }
 
-  const download_path = new URL(`${download_url}/${uuid}`);
-  download_path.searchParams.set('X-Amz-Expires', '14400'); // Valid for 4 hours
-  download_path.searchParams.set(
-    'response-content-disposition',
-    `inline; filename*=UTF-8''${encodeURIComponent(descriptor.title ?? uuid)}`
-  );
-  download_path.searchParams.set('response-content-type', descriptor.mime_type ?? 'text/plain; charset=UTF-8;');
-
   // Generate Presigned Request
-  const s3 = new AwsClient({
-    accessKeyId: constants.LARGE_AWS_ACCESS_KEY_ID!,
-    secretAccessKey: constants.LARGE_AWS_SECRET_ACCESS_KEY!,
-    service: 's3', // required
-  });
-
-  const signed = await s3.sign(download_path, {
-    method: 'GET',
-    headers: {},
-    aws: {
-      signQuery: true,
+  const s3 = new S3Client({
+    region: 'us-east-1',
+    endpoint: download_url,
+    credentials: {
+      accessKeyId: constants.LARGE_AWS_ACCESS_KEY_ID!,
+      secretAccessKey: constants.LARGE_AWS_SECRET_ACCESS_KEY!,
     },
+    forcePathStyle: true,
   });
 
-  descriptor.cached_presigned_url = signed.url;
+  const signed = await getSignedUrl(
+    s3,
+    new GetObjectCommand({
+      Bucket: 'paste',
+      Key: uuid,
+      ResponseContentDisposition: `inline; filename*=UTF-8''${encodeURIComponent(descriptor.title ?? uuid)}`,
+      ResponseContentType: descriptor.mime_type ?? 'text/plain; charset=UTF-8;',
+    }),
+    {
+      expiresIn: 14400,
+    }
+  );
+
+  descriptor.cached_presigned_url = signed;
   descriptor.cached_presigned_url_expiration = new Date(Date.now() + 14400 * 1000).getTime();
 
-  return signed.url;
+  return signed;
 }
 
 router.all('*', (request, env, ctx) => {
@@ -110,8 +111,8 @@ router.post('/create', async (request, env, ctx) => {
     }
 
     file_hash = formdata.get('file-sha256-hash') ?? undefined;
-    if (!file_hash || file_hash.length !== 64) {
-      return new Response('Invalid file-sha256-hash, expecting a SHA256 hex.\n', {
+    if (!file_hash || file_hash.length !== 44) {
+      return new Response('Invalid file-sha256-hash, expecting a Base64 encoded SHA256 hash.\n', {
         status: 422,
       });
     }
@@ -129,10 +130,14 @@ router.post('/create', async (request, env, ctx) => {
 
   const uuid = gen_id();
 
-  const s3 = new AwsClient({
-    accessKeyId: env.LARGE_AWS_ACCESS_KEY_ID!,
-    secretAccessKey: env.LARGE_AWS_SECRET_ACCESS_KEY!,
-    service: 's3', // required
+  const s3 = new S3Client({
+    region: 'us-east-1',
+    endpoint: env.LARGE_ENDPOINT,
+    credentials: {
+      accessKeyId: env.LARGE_AWS_ACCESS_KEY_ID!,
+      secretAccessKey: env.LARGE_AWS_SECRET_ACCESS_KEY!,
+    },
+    forcePathStyle: true,
   });
 
   const current = Date.now();
@@ -141,26 +146,32 @@ router.post('/create', async (request, env, ctx) => {
   upload_path.searchParams.set('X-Amz-Expires', '900'); // Valid for 15 mins
   const required_headers = {
     'Content-Length': file_size.toString(),
-    'X-Amz-Content-Sha256': file_hash,
+    'x-amz-checksum-sha256': file_hash,
   };
 
   // Generate Presigned Request
-  const signed = await s3.sign(upload_path, {
-    method: 'PUT',
-    headers: required_headers,
-    aws: {
-      signQuery: true,
-      service: 's3',
-      allHeaders: true,
-    },
-  });
+  const signed_url = await getSignedUrl(
+    s3,
+    new PutObjectCommand({
+      Bucket: 'paste',
+      Key: uuid,
+      ChecksumSHA256: file_hash,
+      ChecksumAlgorithm: 'SHA256',
+      ContentType: file_size.toString(),
+    }),
+    {
+      expiresIn: 900,
+      unhoistableHeaders: new Set(['x-amz-checksum-sha256']),
+    }
+  );
 
   const result = {
     uuid,
     expiration,
     file_size,
     file_hash,
-    signed_url: signed.url,
+    // signed_url: signed.url,
+    signed_url,
     required_headers,
   };
 
@@ -213,29 +224,26 @@ router.post('/complete/:uuid', async (request, env, ctx) => {
     });
   }
 
-  const s3 = new AwsClient({
-    accessKeyId: env.LARGE_AWS_ACCESS_KEY_ID!,
-    secretAccessKey: env.LARGE_AWS_SECRET_ACCESS_KEY!,
-    service: 's3', // required
+  const s3 = new S3Client({
+    region: 'us-east-1',
+    endpoint: env.LARGE_ENDPOINT,
+    credentials: {
+      accessKeyId: env.LARGE_AWS_ACCESS_KEY_ID!,
+      secretAccessKey: env.LARGE_AWS_SECRET_ACCESS_KEY!,
+    },
+    forcePathStyle: true,
   });
 
   try {
     // Get object attributes
-    const objectmeta = await s3.fetch(`${env.LARGE_ENDPOINT}/${uuid}?attributes`, {
-      method: 'GET',
-      headers: {
-        'X-AMZ-Object-Attributes': 'ObjectSize',
-      },
-    });
-    if (objectmeta.ok) {
-      const xml = await objectmeta.text();
-      const parsed: any = xml2js(xml, {
-        compact: true,
-        nativeType: true,
-        alwaysArray: false,
-        elementNameFn: (val) => val.toLowerCase(),
-      });
-      const file_size: number = parsed.getobjectattributesresponse.objectsize._text;
+    const objectmeta = await s3.send(
+      new HeadObjectCommand({
+        Bucket: 'paste',
+        Key: uuid,
+      })
+    );
+    if (objectmeta.$metadata.httpStatusCode === 200) {
+      const file_size = objectmeta.ContentLength;
       if (file_size !== descriptor.file_size) {
         return new Response(`This paste is not finishing upload. (${file_size} != ${descriptor.file_size})\n`, {
           status: 400,

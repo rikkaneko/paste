@@ -12,9 +12,9 @@ import {
   PasteInfoUpdateParamsValidator,
 } from './schema';
 import { gen_id, get_auth } from '../utils';
-import { AwsClient } from 'aws4fetch';
 import { sha256 } from 'js-sha256';
-import { xml2js } from 'xml-js';
+import { HeadObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
 /* RESTful API (v2) */
 export const router = Router<ERequest, [Env, ExecutionContext]>({ base: '/v2' });
@@ -138,38 +138,45 @@ router.post('/create', async (req, env, ctx) => {
 
   const uuid = gen_id();
 
-  const s3 = new AwsClient({
-    accessKeyId: env.LARGE_AWS_ACCESS_KEY_ID!,
-    secretAccessKey: env.LARGE_AWS_SECRET_ACCESS_KEY!,
-    service: 's3', // required
+  const s3 = new S3Client({
+    region: 'us-east-1',
+    endpoint: env.LARGE_ENDPOINT,
+    credentials: {
+      accessKeyId: env.LARGE_AWS_ACCESS_KEY_ID!,
+      secretAccessKey: env.LARGE_AWS_SECRET_ACCESS_KEY!,
+    },
+    forcePathStyle: true,
   });
 
   const current_time = Date.now();
   // Temporary expiration time
   const expiration = new Date(current_time + 900 * 1000).getTime();
-  const upload_path = new URL(`${env.LARGE_ENDPOINT}/${uuid}`);
-  upload_path.searchParams.set('X-Amz-Expires', '900'); // Valid for 15 mins
-  const request_headers = {
+  const required_headers = {
     'Content-Length': params.file_size.toString(),
-    'X-Amz-Content-Sha256': params.file_hash,
+    'x-amz-checksum-sha256': params.file_hash,
   };
 
   // Generate Presigned Request
-  const signed = await s3.sign(upload_path, {
-    method: 'PUT',
-    headers: request_headers,
-    aws: {
-      signQuery: true,
-      service: 's3',
-      allHeaders: true,
-    },
-  });
+  const signed_url = await getSignedUrl(
+    s3,
+    new PutObjectCommand({
+      Bucket: 'paste',
+      Key: uuid,
+      ChecksumSHA256: params.file_hash,
+      ChecksumAlgorithm: 'SHA256',
+      ContentType: params.file_size.toString(),
+    }),
+    {
+      expiresIn: 900,
+      unhoistableHeaders: new Set(['x-amz-checksum-sha256']),
+    }
+  );
 
   const result: PasteCreateUploadResponse = {
     uuid,
     expiration,
-    upload_url: signed.url,
-    request_headers,
+    upload_url: signed_url,
+    request_headers: required_headers,
   };
 
   const descriptor: PasteIndexEntry = {
@@ -221,29 +228,26 @@ router.post('/complete/:uuid', async (req, env, ctx) => {
     return PasteAPIRepsonse.build(442, 'Invalid operation.');
   }
 
-  const s3 = new AwsClient({
-    accessKeyId: env.LARGE_AWS_ACCESS_KEY_ID!,
-    secretAccessKey: env.LARGE_AWS_SECRET_ACCESS_KEY!,
-    service: 's3', // required
+  const s3 = new S3Client({
+    region: 'us-east-1',
+    endpoint: env.LARGE_ENDPOINT,
+    credentials: {
+      accessKeyId: env.LARGE_AWS_ACCESS_KEY_ID!,
+      secretAccessKey: env.LARGE_AWS_SECRET_ACCESS_KEY!,
+    },
+    forcePathStyle: true,
   });
 
   try {
     // Get object attributes
-    const objectmeta = await s3.fetch(`${env.LARGE_ENDPOINT}/${uuid}?attributes`, {
-      method: 'GET',
-      headers: {
-        'X-AMZ-Object-Attributes': 'ObjectSize',
-      },
-    });
-    if (objectmeta.ok) {
-      const xml = await objectmeta.text();
-      const parsed: any = xml2js(xml, {
-        compact: true,
-        nativeType: true,
-        alwaysArray: false,
-        elementNameFn: (val) => val.toLowerCase(),
-      });
-      const file_size: number = parsed.getobjectattributesresponse.objectsize._text;
+    const objectmeta = await s3.send(
+      new HeadObjectCommand({
+        Bucket: 'paste',
+        Key: uuid,
+      })
+    );
+    if (objectmeta.$metadata.httpStatusCode === 200) {
+      const file_size = objectmeta.ContentLength;
       if (file_size !== descriptor.file_size) {
         return PasteAPIRepsonse.build(
           400,

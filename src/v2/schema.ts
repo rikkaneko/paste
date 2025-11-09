@@ -93,7 +93,7 @@ export interface PasteCreateUploadResponse {
   upload_url: string;
   request_headers: {
     'Content-Length': string;
-    'X-Amz-Content-Sha256': string;
+    'x-amz-checksum-sha256': string;
   };
 }
 
