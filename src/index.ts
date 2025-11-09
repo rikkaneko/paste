@@ -425,10 +425,10 @@ router.get('/:uuid/:option?', async (request, env, ctx) => {
 
     const s3 = new S3Client({
       region: 'us-east-1',
-      endpoint: env.ENDPOINT,
+      endpoint: endpoint,
       credentials: {
-        accessKeyId: env.AWS_ACCESS_KEY_ID!,
-        secretAccessKey: env.AWS_SECRET_ACCESS_KEY!,
+        accessKeyId: access_key_id!,
+        secretAccessKey: secret_access_key!,
       },
       forcePathStyle: true,
     });
