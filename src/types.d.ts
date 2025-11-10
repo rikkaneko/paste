@@ -28,23 +28,7 @@ export interface PasteIndexEntry {
 
 export interface Env {
   // Variable
-  SERVICE_URL: string;
-  PASTE_WEB_URL?: string;
-  UUID_LENGTH: string;
-  CORS_DOMAIN?: string;
-  // Secret
+  CONFIG_NAME?: string;
   PASTE_INDEX: KVNamespace;
   QRCODE: ServiceWorkerGlobalScope;
-  AWS_ACCESS_KEY_ID: string;
-  AWS_SECRET_ACCESS_KEY: string;
-  LARGE_AWS_ACCESS_KEY_ID?: string;
-  LARGE_AWS_SECRET_ACCESS_KEY?: string;
-  ENDPOINT: string;
-  LARGE_ENDPOINT?: string;
-  LARGE_DOWNLOAD_ENDPOINT?: string;
-}
-
-export interface Config extends Env {
-  UUID_LENGTH: number;
-  enable_large_upload: boolean;
 }

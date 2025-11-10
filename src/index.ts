@@ -48,7 +48,7 @@ const router = Router<ERequest, [Env, ExecutionContext]>({
     async (req, env) => {
       try {
         // Load service config
-        await Config.from_kv(env.PASTE_INDEX, 'config', env);
+        await Config.from_kv(env.PASTE_INDEX, env.CONFIG_NAME ?? 'config', env);
       } catch (e) {
         return new Response(`Invalid service config: ${(e as Error).message} \n`, {
           status: 500,
@@ -629,7 +629,7 @@ router.delete('/:uuid', async (request, env, ctx) => {
   if (res.$metadata.httpStatusCode === 200 || res.$metadata.httpStatusCode === 204) {
     ctx.waitUntil(env.PASTE_INDEX.delete(uuid));
     // Invalidate CF cache
-    ctx.waitUntil(cache.delete(new Request(`${env.SERVICE_URL}/${uuid}`)));
+    ctx.waitUntil(cache.delete(new Request(`${config.config().public_url}/${uuid}`)));
     return new Response('OK\n');
   } else {
     return new Response('Unable to process such request.\n', {
