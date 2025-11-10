@@ -18,20 +18,22 @@
 
 import dedent from 'dedent-js';
 import { customAlphabet } from 'nanoid';
-import constants from './constant';
 import { Env } from './types';
 import { PasteIndexEntry, PasteTypeStr } from './v2/schema';
+import Config from './config';
 
-export const gen_id = customAlphabet(
-  '1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz',
-  constants.UUID_LENGTH
-);
+export function gen_id(): string {
+  return customAlphabet(
+    '1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz',
+    Config.get().config().uuid_length
+  )();
+}
 
 // Paste API Response (v1)
-export function get_paste_info_obj(uuid: string, descriptor: PasteIndexEntry, env: Env) {
+export function get_paste_info_obj(uuid: string, descriptor: PasteIndexEntry) {
   const created = new Date(descriptor.created_at);
   const expired = new Date(descriptor.expired_at);
-  const link = `${env.SERVICE_URL}/${uuid}`;
+  const link = `${Config.get().config().public_url}/${uuid}`;
   const paste_info = {
     uuid,
     link,
@@ -53,12 +55,11 @@ export function get_paste_info_obj(uuid: string, descriptor: PasteIndexEntry, en
 export async function get_paste_info(
   uuid: string,
   descriptor: PasteIndexEntry,
-  env: Env,
   use_html: boolean = true,
   need_qr: boolean = false,
   reply_json = false
 ): Promise<Response> {
-  const paste_info = get_paste_info_obj(uuid, descriptor, env);
+  const paste_info = get_paste_info_obj(uuid, descriptor);
 
   // Reply with JSON
   if (reply_json) {
@@ -124,7 +125,7 @@ export async function get_paste_info(
   // Console response
   if (need_qr) {
     // Cloudflare currently does not support doing a subrequest to the same zone, use service binding instead
-    const res = await env.QRCODE.fetch(
+    const res = await Config.env().QRCODE.fetch(
       'https://qrcode.nekoid.cc?' +
         new URLSearchParams({
           q: paste_info.link,

@@ -16,11 +16,15 @@ class Config {
   static async from_kv(kv: KVNamespace, config_name: string = 'config', attach_env?: Env) {
     const val = await kv.get(config_name);
     if (!val) {
-      throw new NonRetryableError('Unable to load service config.');
+      throw new Error('Unable to load service config.');
     }
-    const config = JSON.parse(val);
+    const config: ConfigParams = JSON.parse(val);
     if (!ConfigParamsValidator.test(config)) {
-      throw new NonRetryableError('Invalid config.');
+      throw new SyntaxError('Invalid config.');
+    }
+    // Validate if default storage configuration is provided
+    if (!config.storages.some((ent) => ent.name === 'default')) {
+      throw new SyntaxError('Invalid config: Missing default storage configuation.');
     }
     Config._config = config;
     Config.kv = kv;
@@ -43,7 +47,7 @@ class Config {
 
   static get(): Config {
     if (!Config._config) {
-      throw new NonRetryableError('Service config is not loaded.');
+      throw new ReferenceError('Service config is not loaded.');
     }
     return new Config({
       ...Config._config,
@@ -64,7 +68,7 @@ class Config {
   }
 
   filter_storage(storage_name: string): StorageConfigParams | null {
-    const filtered = this._config.storages.filter((ent) => ent.bucket_name === storage_name);
+    const filtered = this._config.storages.filter((ent) => ent.name === storage_name);
     if (filtered.length >= 1) return filtered[filtered.length - 1];
     else return null;
   }

@@ -218,9 +218,8 @@ router.post('/create', async (req, env, ctx) => {
  */
 router.post('/complete/:uuid', async (req, env, ctx) => {
   const { uuid } = req.params;
-  const _config = Config.get();
-  const config = _config.config();
-  const storage = _config.filter_storage('large');
+  const config = Config.get().config();
+  const storage = Config.get().filter_storage('large');
   if (!storage) {
     return PasteAPIRepsonse.build(501, 'This endpoint is disabled.');
   }

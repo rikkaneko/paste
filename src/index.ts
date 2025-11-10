@@ -21,27 +21,39 @@ import { Router, error, cors } from 'itty-router';
 import { ERequest, Env } from './types';
 import { serve_static } from './proxy';
 import { check_password_rules, get_paste_info, get_auth, gen_id } from './utils';
-import constants, { fetch_constant } from './constant';
 import { get_presign_url, router as large_upload } from './api/large_upload';
 import v2api from './v2/api';
 import { PasteIndexEntry, PasteTypeFrom, PasteType } from './v2/schema';
 import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import Config from './config';
 
 // In favour of new cors() in itty-router v5
 const { preflight, corsify } = cors({
-  origin: (o) => {
-    if (constants?.CORS_DOMAIN) {
-      return o?.endsWith(constants.CORS_DOMAIN) ? o : undefined;
-    }
+  origin: (origin) => {
+    const allowed = Config.get()
+      .config()
+      .cors_domain?.some((domain) => {
+        if (origin === domain || (domain.startsWith('*.') && origin?.endsWith(domain.slice(1))) || domain === '*')
+          return true;
+      });
+    return allowed ? origin : undefined;
   },
   credentials: true,
   allowMethods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
+  allowHeaders: ['x-amz-checksum-sha256'],
 });
 
 const router = Router<ERequest, [Env, ExecutionContext]>({
   before: [
-    (_, env) => {
-      fetch_constant(env);
+    async (req, env) => {
+      try {
+        // Load service config
+        await Config.from_kv(env.PASTE_INDEX, 'config', env);
+      } catch (e) {
+        return new Response(`Invalid service config: ${(e as Error).message} \n`, {
+          status: 500,
+        });
+      }
     },
     preflight,
   ],
@@ -69,18 +81,30 @@ router.all('*', (request) => {
     agent.includes(v)
   );
   // Append the origin/referer
-  request.origin = headers.get('referer') ?? undefined;
+  request.origin = headers.get('origin') ?? headers.get('referer') ?? undefined;
 });
 
 /* Static file path */
 // Web homepage
 router.get('/', (request, env, ctx) => {
-  return serve_static(env.PASTE_WEB_URL + '/paste.html', request.headers);
+  const frontend_url = Config.get().config().frontend_url;
+  if (!frontend_url) {
+    return new Response('Invalid path.\n', {
+      status: 403,
+    });
+  }
+  return serve_static(frontend_url + '/paste.html', request.headers);
 });
 
 // Favicon
 router.get('/favicon.png', (request, env, ctx) => {
-  return serve_static(env.PASTE_WEB_URL + '/favicon.png', request.headers);
+  const frontend_url = Config.get().config().frontend_url;
+  if (!frontend_url) {
+    return new Response('Invalid path.\n', {
+      status: 403,
+    });
+  }
+  return serve_static(frontend_url + '/favicon.png', request.headers);
 });
 
 // Web script and style file
@@ -88,7 +112,13 @@ router.get('/static/*', (request, env, ctx) => {
   const { url } = request;
   const { pathname } = new URL(url);
   const path = pathname.replace(/\/+$/, '') || '/';
-  return serve_static(env.PASTE_WEB_URL + path, request.headers);
+  const frontend_url = Config.get().config().frontend_url;
+  if (!frontend_url) {
+    return new Response('Invalid path.\n', {
+      status: 403,
+    });
+  }
+  return serve_static(frontend_url + path, request.headers);
 });
 
 // Create new paste (10MB limit)
@@ -224,19 +254,27 @@ router.post('/', async (request, env, ctx) => {
     });
   }
 
+  const config = Config.get();
+  const storage = config.filter_storage('default');
+  if (!storage) {
+    return new Response('Invalid service config\n', {
+      status: 500,
+    });
+  }
+
   const s3 = new S3Client({
-    region: 'us-east-1',
-    endpoint: env.ENDPOINT,
+    region: storage.region,
+    endpoint: storage.endpoint,
     credentials: {
-      accessKeyId: env.AWS_ACCESS_KEY_ID!,
-      secretAccessKey: env.AWS_SECRET_ACCESS_KEY!,
+      accessKeyId: storage.access_key_id,
+      secretAccessKey: storage.secret_access_key,
     },
     forcePathStyle: true,
   });
 
   const res = await s3.send(
     new PutObjectCommand({
-      Bucket: 'paste',
+      Bucket: storage.bucket_name,
       Key: uuid,
       Body: buffer,
     })
@@ -276,7 +314,7 @@ router.post('/', async (request, env, ctx) => {
 
     // Key will be expired after 28 day if unmodified
     ctx.waitUntil(env.PASTE_INDEX.put(uuid, JSON.stringify(descriptor), { expirationTtl: 2419200 }));
-    return await get_paste_info(uuid, descriptor, env, request.is_browser, need_qrcode, reply_json);
+    return await get_paste_info(uuid, descriptor, request.is_browser, need_qrcode, reply_json);
   } else {
     return new Response('Unable to upload the paste.\n', {
       status: 500,
@@ -294,8 +332,9 @@ router.all('/v2/*', v2api.fetch);
 router.get('/:uuid/:option?', async (request, env, ctx) => {
   const { headers } = request;
   const { uuid, option } = request.params;
+  const config = Config.get().config();
   // UUID format: [A-z0-9]{UUID_LENGTH}
-  if (uuid.length !== constants.UUID_LENGTH) {
+  if (uuid.length !== config.uuid_length) {
     return new Response('Invalid UUID.\n', {
       status: 442,
     });
@@ -312,7 +351,7 @@ router.get('/:uuid/:option?', async (request, env, ctx) => {
   if (option === 'settings') {
     const need_qrcode = request.query?.qr === '1' || headers.get('x-qr') === '1';
     const reply_json = request.query?.json === '1' || headers.get('x-json') === '1';
-    return await get_paste_info(uuid, descriptor, env, request.is_browser, need_qrcode, reply_json);
+    return await get_paste_info(uuid, descriptor, request.is_browser, need_qrcode, reply_json);
   }
 
   // Check password if needed
@@ -404,7 +443,7 @@ router.get('/:uuid/:option?', async (request, env, ctx) => {
   const cache = caches.default;
   const match_etag = headers.get('If-None-Match') || undefined;
   // Define the Request object as cache key
-  const req_key = new Request(`${env.SERVICE_URL}/${uuid}`, {
+  const req_key = new Request(`${config.public_url}/${uuid}`, {
     method: 'GET',
     headers: match_etag
       ? {
@@ -417,25 +456,27 @@ router.get('/:uuid/:option?', async (request, env, ctx) => {
   let res = await cache.match(req_key);
   if (res === undefined) {
     // Use althernative endpoint and credentials for large_type
-    const endpoint = descriptor.paste_type == PasteType.large_paste ? env.LARGE_DOWNLOAD_ENDPOINT : env.ENDPOINT;
-    const access_key_id =
-      descriptor.paste_type == PasteType.large_paste ? env.LARGE_AWS_ACCESS_KEY_ID! : env.AWS_ACCESS_KEY_ID;
-    const secret_access_key =
-      descriptor.paste_type == PasteType.large_paste ? env.LARGE_AWS_SECRET_ACCESS_KEY! : env.AWS_SECRET_ACCESS_KEY;
+    const paste_type = descriptor.paste_type == PasteType.large_paste ? 'large' : 'default';
+    const storage = Config.get().filter_storage(paste_type);
+    if (!storage) {
+      return new Response('Internal server error.\n', {
+        status: 500,
+      });
+    }
 
     const s3 = new S3Client({
-      region: 'us-east-1',
-      endpoint: endpoint,
+      region: storage.region,
+      endpoint: storage.endpoint,
       credentials: {
-        accessKeyId: access_key_id!,
-        secretAccessKey: secret_access_key!,
+        accessKeyId: storage.access_key_id,
+        secretAccessKey: storage.secret_access_key,
       },
       forcePathStyle: true,
     });
 
     const origin = await s3.send(
       new GetObjectCommand({
-        Bucket: 'paste',
+        Bucket: storage.bucket_name,
         Key: uuid,
         IfNoneMatch: match_etag,
       })
@@ -523,20 +564,13 @@ router.get('/:uuid/:option?', async (request, env, ctx) => {
   return nres;
 });
 
-// Update paste metadata
-router.post('/:uuid/:options', () => {
-  // TODO Implement paste setting update
-  return new Response('Service is under maintainance.\n', {
-    status: 422,
-  });
-});
-
 // Delete paste by uuid
 router.delete('/:uuid', async (request, env, ctx) => {
   const { headers } = request;
   const { uuid } = request.params;
+  const config = Config.get();
   // UUID format: [A-z0-9]{UUID_LENGTH}
-  if (uuid.length !== constants.UUID_LENGTH) {
+  if (uuid.length !== config.config().uuid_length) {
     return new Response('Invalid UUID.\n', {
       status: 442,
     });
@@ -567,39 +601,32 @@ router.delete('/:uuid', async (request, env, ctx) => {
 
   const cache = caches.default;
   // Distinguish the endpoint for large_paste and normal paste
-  if (descriptor.paste_type == PasteType.large_paste) {
-    if (!env.LARGE_AWS_ACCESS_KEY_ID || !env.LARGE_AWS_SECRET_ACCESS_KEY || !env.LARGE_ENDPOINT) {
-      return new Response('Unsupported paste type.\n', {
-        status: 501,
-      });
-    }
+  const paste_type = descriptor.paste_type == PasteType.large_paste ? 'large' : 'default';
+  const storage = Config.get().filter_storage(paste_type);
+  if (!storage) {
+    return new Response('Unsupported paste type.\n', {
+      status: 500,
+    });
   }
 
-  // Use althernative endpoint and credentials for large_type
-  const endpoint = descriptor.paste_type == PasteType.large_paste ? env.LARGE_DOWNLOAD_ENDPOINT : env.ENDPOINT;
-  const access_key_id =
-    descriptor.paste_type == PasteType.large_paste ? env.LARGE_AWS_ACCESS_KEY_ID! : env.AWS_ACCESS_KEY_ID;
-  const secret_access_key =
-    descriptor.paste_type == PasteType.large_paste ? env.LARGE_AWS_SECRET_ACCESS_KEY! : env.AWS_SECRET_ACCESS_KEY;
-
   const s3 = new S3Client({
-    region: 'us-east-1',
-    endpoint: env.ENDPOINT,
+    region: storage.region,
+    endpoint: storage.endpoint,
     credentials: {
-      accessKeyId: env.AWS_ACCESS_KEY_ID!,
-      secretAccessKey: env.AWS_SECRET_ACCESS_KEY!,
+      accessKeyId: storage.access_key_id,
+      secretAccessKey: storage.secret_access_key,
     },
     forcePathStyle: true,
   });
 
   const res = await s3.send(
     new DeleteObjectCommand({
-      Bucket: 'paste',
+      Bucket: storage.bucket_name,
       Key: uuid,
     })
   );
 
-  if (res.$metadata.httpStatusCode === 200) {
+  if (res.$metadata.httpStatusCode === 200 || res.$metadata.httpStatusCode === 204) {
     ctx.waitUntil(env.PASTE_INDEX.delete(uuid));
     // Invalidate CF cache
     ctx.waitUntil(cache.delete(new Request(`${env.SERVICE_URL}/${uuid}`)));

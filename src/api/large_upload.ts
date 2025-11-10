@@ -4,8 +4,8 @@ import { S3Client, PutObjectCommand, HeadObjectCommand, GetObjectCommand } from 
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { ERequest, Env } from '../types';
 import { gen_id, get_paste_info_obj } from '../utils';
-import constants from '../constant';
 import { PasteIndexEntry, PasteType } from '../v2/schema';
+import Config from '../config';
 
 export const router = Router<ERequest, [Env, ExecutionContext]>({ base: '/api/large_upload' });
 
@@ -19,19 +19,20 @@ export async function get_presign_url(uuid: string, descriptor: PasteIndexEntry)
     }
   }
 
-  const download_url = constants.LARGE_DOWNLOAD_ENDPOINT ?? constants.LARGE_ENDPOINT;
-  if (download_url == null) {
-    // Not method to download
+  const storage = Config.get().filter_storage('large');
+  if (!storage) {
     return null;
   }
 
+  const download_url = storage.download_endpoint ?? storage.endpoint;
+
   // Generate Presigned Request
   const s3 = new S3Client({
-    region: 'us-east-1',
+    region: storage.region,
     endpoint: download_url,
     credentials: {
-      accessKeyId: constants.LARGE_AWS_ACCESS_KEY_ID!,
-      secretAccessKey: constants.LARGE_AWS_SECRET_ACCESS_KEY!,
+      accessKeyId: storage.access_key_id,
+      secretAccessKey: storage.secret_access_key,
     },
     forcePathStyle: true,
   });
@@ -39,7 +40,7 @@ export async function get_presign_url(uuid: string, descriptor: PasteIndexEntry)
   const signed = await getSignedUrl(
     s3,
     new GetObjectCommand({
-      Bucket: 'paste',
+      Bucket: storage.bucket_name,
       Key: uuid,
       ResponseContentDisposition: `inline; filename*=UTF-8''${encodeURIComponent(descriptor.title ?? uuid)}`,
       ResponseContentType: descriptor.mime_type ?? 'text/plain; charset=UTF-8;',
@@ -56,7 +57,8 @@ export async function get_presign_url(uuid: string, descriptor: PasteIndexEntry)
 }
 
 router.all('*', (request, env, ctx) => {
-  if (!env.LARGE_AWS_ACCESS_KEY_ID || !env.LARGE_AWS_SECRET_ACCESS_KEY || !env.LARGE_ENDPOINT) {
+  const storage = Config.get().filter_storage('large');
+  if (!storage) {
     return new Response('This function is currently disabled.\n', {
       status: 501,
     });
@@ -129,21 +131,20 @@ router.post('/create', async (request, env, ctx) => {
   }
 
   const uuid = gen_id();
+  const storage = Config.get().filter_storage('large');
 
   const s3 = new S3Client({
-    region: 'us-east-1',
-    endpoint: env.LARGE_ENDPOINT,
+    region: storage!.region,
+    endpoint: storage!.endpoint,
     credentials: {
-      accessKeyId: env.LARGE_AWS_ACCESS_KEY_ID!,
-      secretAccessKey: env.LARGE_AWS_SECRET_ACCESS_KEY!,
+      accessKeyId: storage!.access_key_id,
+      secretAccessKey: storage!.secret_access_key,
     },
     forcePathStyle: true,
   });
 
   const current = Date.now();
   const expiration = new Date(current + 14400 * 1000).getTime();
-  const upload_path = new URL(`${env.LARGE_ENDPOINT}/${uuid}`);
-  upload_path.searchParams.set('X-Amz-Expires', '900'); // Valid for 15 mins
   const required_headers = {
     'Content-Length': file_size.toString(),
     'x-amz-checksum-sha256': file_hash,
@@ -153,7 +154,7 @@ router.post('/create', async (request, env, ctx) => {
   const signed_url = await getSignedUrl(
     s3,
     new PutObjectCommand({
-      Bucket: 'paste',
+      Bucket: storage!.bucket_name,
       Key: uuid,
       ChecksumSHA256: file_hash,
       ChecksumAlgorithm: 'SHA256',
@@ -201,10 +202,10 @@ router.post('/create', async (request, env, ctx) => {
 });
 
 router.post('/complete/:uuid', async (request, env, ctx) => {
-  const { headers } = request;
   const { uuid } = request.params;
+  const config = Config.get();
   // UUID format: [A-z0-9]{UUID_LENGTH}
-  if (uuid.length !== constants.UUID_LENGTH) {
+  if (uuid.length !== config.config().uuid_length) {
     return new Response('Invalid UUID.\n', {
       status: 442,
     });
@@ -224,12 +225,14 @@ router.post('/complete/:uuid', async (request, env, ctx) => {
     });
   }
 
+  const storage = config.filter_storage('large');
+
   const s3 = new S3Client({
-    region: 'us-east-1',
-    endpoint: env.LARGE_ENDPOINT,
+    region: storage!.region,
+    endpoint: storage!.endpoint,
     credentials: {
-      accessKeyId: env.LARGE_AWS_ACCESS_KEY_ID!,
-      secretAccessKey: env.LARGE_AWS_SECRET_ACCESS_KEY!,
+      accessKeyId: storage!.access_key_id,
+      secretAccessKey: storage!.secret_access_key,
     },
     forcePathStyle: true,
   });
@@ -238,7 +241,7 @@ router.post('/complete/:uuid', async (request, env, ctx) => {
     // Get object attributes
     const objectmeta = await s3.send(
       new HeadObjectCommand({
-        Bucket: 'paste',
+        Bucket: storage!.bucket_name,
         Key: uuid,
       })
     );
@@ -271,7 +274,7 @@ router.post('/complete/:uuid', async (request, env, ctx) => {
   const paste_info = {
     upload_completed: true,
     expired: new Date(expriation).toISOString(),
-    paste_info: get_paste_info_obj(uuid, descriptor, env),
+    paste_info: get_paste_info_obj(uuid, descriptor),
   };
 
   return new Response(JSON.stringify(paste_info));
@@ -279,8 +282,9 @@ router.post('/complete/:uuid', async (request, env, ctx) => {
 
 router.get('/:uuid', async (request, env, ctx) => {
   const { uuid } = request.params;
+  const config = Config.get().config();
   // UUID format: [A-z0-9]{UUID_LENGTH}
-  if (uuid.length !== constants.UUID_LENGTH) {
+  if (uuid.length !== config.uuid_length) {
     return new Response('Invalid UUID.\n', {
       status: 442,
     });
