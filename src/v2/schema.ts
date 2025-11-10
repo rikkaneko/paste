@@ -1,4 +1,5 @@
 import { Validator, Rule } from '@cesium133/forgjs';
+import { cors } from 'itty-router';
 
 export enum PasteType {
   paste = 1,
@@ -87,6 +88,68 @@ const param_rules = {
 
 export const PasteCreateParamsValidator = new Validator(param_rules);
 
+export interface StorageConfigParams {
+  name: string;
+  // S3-compatible service endpoint
+  endpoint: string;
+  // Custom endpoint for downloads
+  download_endpoint?: string;
+  // Region (Default to us-east-1 if not specified)
+  region?: string;
+  // Bucket name
+  bucket_name: string;
+  // AWS access key ID
+  access_key_id: string;
+  // Secret key associated with an AWS access key ID
+  secret_access_key: string;
+}
+
+export interface ConfigParams {
+  // Access token to read/modify runtime config
+  config_auth_token: string;
+  // UUID length
+  uuid_length: number;
+  // Base path to this service
+  public_url: string;
+  // Base path to frontend assets
+  frontend_url?: string;
+  // Allowed CORS domains
+  cors_domain?: string[];
+  // Storage configurations
+  storages: StorageConfigParams[];
+}
+
+const storage_config_rules = {
+  name: new Rule({ type: 'string', notEmpty: true }),
+  endpoint: new Rule({ type: 'url', notEmpty: true }),
+  download_endpoint: new Rule({ type: 'url', notEmpty: true, optional: true }),
+  region: new Rule({ type: 'string', optional: true }),
+  bucket_name: new Rule({ type: 'string', notEmpty: true }),
+  access_key_id: new Rule({ type: 'string', notEmpty: true }),
+  secret_access_key: new Rule({ type: 'string', notEmpty: true }),
+};
+
+export const StorageConfigParamsValidator = new Validator(storage_config_rules);
+
+const config_rules = {
+  config_auth_token: new Rule({ type: 'string', notEmpty: true }),
+  uuid_length: new Rule({ type: 'int', min: 1 }),
+  public_url: new Rule({ type: 'url' }),
+  frontend_url: new Rule({ type: 'url', optional: true }),
+  cors_domain: new Rule({
+    type: 'array',
+    of: new Rule({ type: 'string', notEmpty: true }),
+    optional: true,
+  }),
+  storages: new Rule({
+    type: 'array',
+    of: StorageConfigParamsValidator,
+    notEmpty: true,
+  }),
+};
+
+export const ConfigParamsValidator = new Validator(config_rules);
+
 export interface PasteCreateUploadResponse {
   uuid: string;
   expiration: number;
@@ -113,9 +176,9 @@ export const PasteInfoUpdateParamsValidator = new Validator(editabe_fiels);
 export class PasteAPIRepsonse {
   static build(
     status_code: number = 200,
-    content?: string | PasteInfo | PasteCreateUploadResponse,
-    headers?: HeadersInit,
-    content_name?: string
+    content?: string | Object,
+    content_name?: string,
+    headers?: HeadersInit
   ): Response {
     // Default content name if not set
     if (content_name == undefined) {

@@ -1,6 +1,5 @@
 import { Router } from 'itty-router/Router';
 import { Env, ERequest } from '../types';
-import constants from '../constant';
 import {
   PasteAPIRepsonse,
   PasteCreateParams,
@@ -15,6 +14,7 @@ import { gen_id, get_auth } from '../utils';
 import { sha256 } from 'js-sha256';
 import { HeadObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import Config from '../config';
 
 /* RESTful API (v2) */
 export const router = Router<ERequest, [Env, ExecutionContext]>({ base: '/v2' });
@@ -26,7 +26,8 @@ export const router = Router<ERequest, [Env, ExecutionContext]>({ base: '/v2' })
  */
 router.get('/info/:uuid', async (req, env, ctx) => {
   const { uuid } = req.params;
-  if (uuid.length !== constants.UUID_LENGTH) {
+  const config = Config.get().config();
+  if (uuid.length !== config.uuid_length) {
     new PasteAPIRepsonse();
     return PasteAPIRepsonse.build(442, 'Invalid UUID.');
   }
@@ -46,7 +47,8 @@ router.get('/info/:uuid', async (req, env, ctx) => {
  */
 router.post('/info/:uuid', async (req, env, ctx) => {
   const { uuid } = req.params;
-  if (uuid.length !== constants.UUID_LENGTH) {
+  const config = Config.get().config();
+  if (uuid.length !== config.uuid_length) {
     new PasteAPIRepsonse();
     return PasteAPIRepsonse.build(442, 'Invalid UUID.');
   }
@@ -121,6 +123,10 @@ router.post('/info/:uuid', async (req, env, ctx) => {
  */
 router.post('/create', async (req, env, ctx) => {
   let params: PasteCreateParams | undefined;
+  const storage = Config.get().filter_storage('large');
+  if (!storage) {
+    return PasteAPIRepsonse.build(501, 'This endpoint is disabled.');
+  }
   try {
     const _params: PasteCreateParams = await req.json();
     if (!PasteCreateParamsValidator.test(_params)) {
@@ -139,11 +145,11 @@ router.post('/create', async (req, env, ctx) => {
   const uuid = gen_id();
 
   const s3 = new S3Client({
-    region: 'us-east-1',
-    endpoint: env.LARGE_ENDPOINT,
+    region: storage.region,
+    endpoint: storage.endpoint,
     credentials: {
-      accessKeyId: env.LARGE_AWS_ACCESS_KEY_ID!,
-      secretAccessKey: env.LARGE_AWS_SECRET_ACCESS_KEY!,
+      accessKeyId: storage.access_key_id,
+      secretAccessKey: storage.secret_access_key,
     },
     forcePathStyle: true,
   });
@@ -160,7 +166,7 @@ router.post('/create', async (req, env, ctx) => {
   const signed_url = await getSignedUrl(
     s3,
     new PutObjectCommand({
-      Bucket: 'paste',
+      Bucket: storage.bucket_name,
       Key: uuid,
       ChecksumSHA256: params.file_hash,
       ChecksumAlgorithm: 'SHA256',
@@ -212,7 +218,13 @@ router.post('/create', async (req, env, ctx) => {
  */
 router.post('/complete/:uuid', async (req, env, ctx) => {
   const { uuid } = req.params;
-  if (uuid.length !== constants.UUID_LENGTH) {
+  const _config = Config.get();
+  const config = _config.config();
+  const storage = _config.filter_storage('large');
+  if (!storage) {
+    return PasteAPIRepsonse.build(501, 'This endpoint is disabled.');
+  }
+  if (uuid.length !== config.uuid_length) {
     new PasteAPIRepsonse();
     return PasteAPIRepsonse.build(442, 'Invalid UUID.');
   }
@@ -229,11 +241,11 @@ router.post('/complete/:uuid', async (req, env, ctx) => {
   }
 
   const s3 = new S3Client({
-    region: 'us-east-1',
-    endpoint: env.LARGE_ENDPOINT,
+    region: storage.region,
+    endpoint: storage.endpoint,
     credentials: {
-      accessKeyId: env.LARGE_AWS_ACCESS_KEY_ID!,
-      secretAccessKey: env.LARGE_AWS_SECRET_ACCESS_KEY!,
+      accessKeyId: storage.access_key_id,
+      secretAccessKey: storage.secret_access_key,
     },
     forcePathStyle: true,
   });
@@ -242,7 +254,7 @@ router.post('/complete/:uuid', async (req, env, ctx) => {
     // Get object attributes
     const objectmeta = await s3.send(
       new HeadObjectCommand({
-        Bucket: 'paste',
+        Bucket: storage.bucket_name,
         Key: uuid,
       })
     );
@@ -278,7 +290,8 @@ router.post('/complete/:uuid', async (req, env, ctx) => {
  */
 router.delete('/:uuid', async (req, env, ctx) => {
   const { uuid } = req.params;
-  if (uuid.length !== constants.UUID_LENGTH) {
+  const config = Config.get().config();
+  if (uuid.length !== config.uuid_length) {
     new PasteAPIRepsonse();
     return PasteAPIRepsonse.build(442, 'Invalid UUID.');
   }
@@ -304,9 +317,25 @@ router.post('/upload', async (req, env, ctx) => {
   return PasteAPIRepsonse.build(200, 'This endpoint is not ready.');
 });
 
+router.get('/config', async (req, env, ctx) => {
+  const auth = get_auth(req.headers, 'Bearer') as string | null;
+  if (!auth || !Config.check_auth(auth)) {
+    return PasteAPIRepsonse.build(404, 'Invalid endpoint.');
+  }
+  const config = Config.get().config();
+  if (config.storages) {
+    // Erase sensitive infomation
+    config.storages.map((ent) => {
+      ent.access_key_id = '***';
+      ent.secret_access_key = '***';
+    });
+  }
+  return PasteAPIRepsonse.build(200, config, 'Config');
+});
+
 // Fallback route
 router.all('*', async () => {
-  return PasteAPIRepsonse.build(403, 'Invalid endpoint.');
+  return PasteAPIRepsonse.build(404, 'Invalid endpoint.');
 });
 
 export default router;
