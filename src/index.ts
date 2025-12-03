@@ -172,7 +172,7 @@ router.post('/', async (request, env, ctx) => {
     }
 
     // Set password
-    const pass = formdata.get('pass');
+    const pass = formdata.get('auth-key') || get_auth(request);
     if (typeof pass === 'string') {
       password = pass || undefined;
     }
@@ -203,7 +203,7 @@ router.post('/', async (request, env, ctx) => {
     // HTTP API
     title = headers.get('x-paste-title') || undefined;
     mime_type = headers.get('x-paste-content-type') || undefined;
-    password = headers.get('x-pass') || undefined;
+    password = get_auth(request) || undefined;
     paste_type = headers.get('x-paste-type') || undefined;
     need_qrcode = headers.get('x-paste-qr') === '1';
     reply_json = headers.get('x-json') === '1';
@@ -572,16 +572,14 @@ router.delete('/:uuid', async (request, env, ctx) => {
 
   // Check password if needed
   if (descriptor.password !== undefined) {
-    if (headers.has('x-pass')) {
-      const pass = headers.get('x-pass');
-      if (descriptor.password !== sha256(pass!).slice(0, 16)) {
-        return new Response('Incorrect password.\n', {
-          status: 403,
-        });
-      }
-    } else {
-      return new Response('This operation requires password.\n', {
-        status: 401,
+    let cert = get_auth(request);
+    if (cert == null) {
+      return new Response('This paste requires password.\n', {
+        status: 403,
+      });
+    } else if (descriptor.password !== sha256(cert).slice(0, 16)) {
+      return new Response('Incorrect password.\n', {
+        status: 403,
       });
     }
   }

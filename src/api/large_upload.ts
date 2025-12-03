@@ -83,7 +83,7 @@ router.post('/create', async (request, env, ctx) => {
     const mime = formdata.get('mime-type');
     if (typeof title === 'string') file_title = title;
     if (typeof mime === 'string') file_mime = mime;
-    const pass = formdata.get('pass') ?? undefined;
+    const pass = formdata.get('auth-key') || get_auth(request) || undefined;
     if (typeof pass === 'string') password = pass;
 
     const count = formdata.get('read-limit');

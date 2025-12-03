@@ -268,7 +268,7 @@ $(function () {
         'file-sha256-hash': file_hash,
         'mime-type': content.type,
         'read-limit': formdata.get('read-limit') || undefined,
-        pass: formdata.get('pass') || undefined,
+        pass: formdata.get('auth-key') || undefined,
       };
 
       // Remove empty entries

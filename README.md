@@ -16,7 +16,7 @@ Please **DO NOT** abuse this service.
 - [x] Download paste
 - [x] Delete paste
 - [ ] Update existing paste
-- [x] Password protection (support [HTTP Basic authentication](https://en.wikipedia.org/wiki/Basic_access_authentication) and `x-pass` header)
+- [x] Password protection (support [HTTP Basic authentication](https://en.wikipedia.org/wiki/Basic_access_authentication) and `x-auth-key` header)
 - [x] Limit access times
 - [x] View paste in browsers (only for text and media file)
 - [ ] Expiring paste (*not support directly, see [this section](#expiring-paste)*)
@@ -36,23 +36,83 @@ It is worth noting that Cloudflare Worker is run *before* the cache. Therefore, 
 
 |Variable name|Description|
 |-|-|
-|`SERVICE_URL`|Service URL|
-|`PASTE_INDEX_HTML_URL`|Service frontpage HTML URL|
-|`UUID_LENGTH`|The length of the UUID of the paste (Default: 4)|
-|`PASTE_INDEX`|Cloudflare KV namespace ID|
-|`AWS_ACCESS_KEY_ID`|AWS access key|
-|`AWS_SECRET_ACCESS_KEY`|AWS secret key|
-|`ENDPOINT`|S3 endpoint|
-|`LARGE_AWS_ACCESS_KEY_ID`|AWS access key for `LARGE_ENDPOINT`|
-|`LARGE_AWS_SECRET_ACCESS_KEY`|AWS secret key for `LARGE_ENDPOINT`|
-|`LARGE_ENDPOINT`|S3 endpoint to upload *large paste*|
-|`LARGE_DOWNLOAD_ENDPOINT`|S3/CDN endpoint/ to retrieve *large paste*|
+|`CONFIG_NAME`|Config key name to the runtime config (Default to `config`)|
 
-`AWS_ACCESS_*` and `LARGE_AWS_ACCESS_*` is the access credentials to S3-compatible object storages.  
-These environment variable can be set in `wrangler.toml` or using the following command:
-```sh
-$ pnpm wrangler secret put <KEY>
+## Runtime config
+Now the runtime config is stored in the Worker KV with the name `config`.  
+The actual schema for the runtime config is available at `StorageConfigParams` and `ConfigParams` in [v2/schema.ts](src/v2/schema.ts).
+
+### Runtime config schema
+```typescript
+export interface StorageConfigParams {
+  name: string;
+  // S3-compatible service endpoint
+  endpoint: string;
+  // Custom endpoint for downloads
+  download_endpoint?: string;
+  // Region (Default to us-east-1 if not specified)
+  region?: string;
+  // Bucket name
+  bucket_name: string;
+  // AWS access key ID
+  access_key_id: string;
+  // Secret key associated with an AWS access key ID
+  secret_access_key: string;
+  // Maximum acceptable file size for this endpoint
+  max_file_size: number;
+}
+
+export interface ConfigParams {
+  // Access token to read/modify runtime config
+  config_auth_token: string;
+  // UUID length
+  uuid_length: number;
+  // Base path to this service
+  public_url: string;
+  // Base path to frontend assets
+  frontend_url?: string;
+  // Allowed CORS domains
+  cors_domain?: string[];
+  // Storage configurations
+  storages: StorageConfigParams[];
+}
 ```
+
+`access_key_id` and `secret_access_key` is the access credentials to any S3-compatible object storage service or self-hosted S3 API endpoint.
+
+### Example runtime config
+```json
+{
+  "config_auth_token": "auth-token",
+  "uuid_length": 4,
+  "public_url": "pb.nekoid.cc",
+  // Here I use my github repository as static file host
+  "frontend_url": "https://raw.githubusercontent.com/rikkaneko/paste/main/frontend",
+  // Need to match your public domain
+  "cors_domain": ["*.nekoid.cc"],
+  "storages": [
+    {
+      "name": "default",
+      "endpoint": "https://s3.exmaple.com",
+      "download_endpoint": "https://s3-cdn.exmaple.com",
+      "bucket_name": "bucket-1",
+      "access_key_id": "access-key-id-1",
+      "secret_access_key": "secret-access-key-1",
+      "max_file_size": 10485760
+    },
+    {
+      "name": "large",
+      "endpoint": "https://s3.exmaple.com",
+      "bucket_name": "bucket-2",
+      "access_key_id": "access-key-id-2",
+      "secret_access_key": "secret-access-key-2",
+      "max_file_size": 1073741824
+    }
+  ]
+}
+```
+
+Note that `default` storage is mandatory for the normal operation for this service.
 
 ## Usage
 
@@ -61,37 +121,37 @@ $ pnpm wrangler secret put <KEY>
 Upload a file (Raw body) with password enabled
 
 ```sh
-$ curl -g -X POST -T <file-path> -H "x-pass: exmaple1234" "https://pb.nekoid.cc"
+curl -g -X POST -T <file-path> -H "x-auth-key: exmaple1234" "https://pb.nekoid.cc"
 ```
 
 Upload a file (Formdata) with password enabled
 
 ```shell
-$ curl -F u=@<file-path> -F "pass=example1234" "https://pb.nekoid.cc"
+curl -F u=@<file-path> -F "auth-key=example1234" "https://pb.nekoid.cc"
 ```
 
 Upload command ouput as paste
 
 ```shell
-$ lspci -v | curl -F u=@- 'https://pb.nekoid.cc'
+lspci -v | curl -F u=@- 'https://pb.nekoid.cc'
 ```
 
 Update a paste with QR code generation of paste link
 
 ```shell
-$ echo "Hello, world!" | curl -F u=@- 'https://pb.nekoid.cc?qr=1'
+echo "Hello, world!" | curl -F u=@- 'https://pb.nekoid.cc?qr=1'
 ```
 
 Get paste
 
 ```shell
-$ curl https://pb.nekoid.cc/<uuid>
+curl https://pb.nekoid.cc/<uuid>
 ```
 
 Delete paste
 
 ```shell
-$ curl -X DELETE https://pb.nekoid.cc/<uuid>
+curl -X DELETE https://pb.nekoid.cc/<uuid>
 ```
 
 ### **Web**
@@ -111,7 +171,7 @@ Fetch API specification
 
 ### `GET /<uuid>`
 
-Fetch the paste by uuid. *If the password is set, this request requires additional `x-pass` header or to
+Fetch the paste by uuid. *If the password is set, this request requires additional `x-auth-key` header or to
 use [HTTP Basic authentication](https://en.wikipedia.org/wiki/Basic_access_authentication).*
 
 ### `POST /`
@@ -124,7 +184,7 @@ Add `?qr=1` to enable QR code generation for paste link.
 |Form Key|Description|
 |-|-|
 |`u`|Upload content|
-|`pass`|Password|
+|`auth-key`|Password|
 |`read-limit`|The maximum access count|
 |`qrcode`|Toggle QR code generation|
 |`paste-type`|Set paste type|
@@ -138,7 +198,7 @@ Add `?qr=1` to enable QR code generation for paste link.
 |-|-|
 |`x-content-type`|The media type (MIME) of the data and encoding|
 |`x-title`|File title|
-|`x-pass`|Password|
+|`x-auth-key`|Password|
 |`x-read-limit`|The maximum access count|
 |`x-paste-type`|Set paste type|
 |`x-qr`|Toggle QR code generation|
@@ -208,7 +268,7 @@ Currently, only the following options is supported for `option`
 
 ### `DELETE /<uuid>`
 
-Delete paste by uuid. *If the password is set, this request requires additional `x-pass` header*
+Delete paste by uuid. *If the password is set, this request requires additional `x-auth-key` header*
 
 ### `POST /api/large_upload/create`
 
@@ -237,7 +297,7 @@ The `file-size` and `file-sha256sum` field is required.
   "signed_url": "<upload-path>",
   "required_headers": {
     "Content-Length": "<expected-upload-file-size>",
-    "X-Amz-Content-Sha256": "<expected-upload-file-hash>"
+    "x-amz-checksum-sha256": "<expected-upload-file-hash>"
   }
 }
 ```
