@@ -9,6 +9,8 @@ import {
   PasteType,
   PasteInfoUpdateParams,
   PasteInfoUpdateParamsValidator,
+  ConfigParams,
+  ConfigParamsValidator,
 } from './schema';
 import { gen_id, get_auth } from '../utils';
 import { sha256 } from 'js-sha256';
@@ -49,7 +51,6 @@ router.post('/info/:uuid', async (req, env, ctx) => {
   const { uuid } = req.params;
   const config = Config.get().config();
   if (uuid.length !== config.uuid_length) {
-    new PasteAPIRepsonse();
     return PasteAPIRepsonse.build(442, 'Invalid UUID.');
   }
   const val = await env.PASTE_INDEX.get(uuid);
@@ -72,7 +73,7 @@ router.post('/info/:uuid', async (req, env, ctx) => {
   // Check password if needed
   if (descriptor.password !== undefined) {
     const { headers } = req;
-    let cert = get_auth(headers, 'Bearer');
+    let cert = get_auth(req);
     // Error occurred when parsing the header
     if (cert === null) {
       return PasteAPIRepsonse.build(
@@ -138,8 +139,8 @@ router.post('/create', async (req, env, ctx) => {
   }
 
   // Create paste logic
-  if (params.file_size > 262144000) {
-    return PasteAPIRepsonse.build(422, 'Paste size must be under 250MB.\n');
+  if (params.file_size > storage.max_file_size) {
+    return PasteAPIRepsonse.build(422, `Paste size must be under ${to_human_readable_size(storage.max_file_size)}\n`);
   }
 
   const uuid = gen_id();
@@ -317,7 +318,7 @@ router.post('/upload', async (req, env, ctx) => {
 });
 
 router.get('/config', async (req, env, ctx) => {
-  const auth = get_auth(req.headers, 'Bearer') as string | null;
+  const auth = get_auth(req, 'x-auth-token') as string | null;
   if (!auth || !Config.check_auth(auth)) {
     return PasteAPIRepsonse.build(404, 'Invalid endpoint.');
   }
@@ -332,9 +333,35 @@ router.get('/config', async (req, env, ctx) => {
   return PasteAPIRepsonse.build(200, config, 'Config');
 });
 
+router.post('/config', async (req, env, ctx) => {
+  const auth = get_auth(req, 'x-auth-token') as string | null;
+  if (!auth || !Config.check_auth(auth)) {
+    return PasteAPIRepsonse.build(404, 'Invalid endpoint.');
+  }
+  let new_config: ConfigParams | undefined;
+  try {
+    const _params: ConfigParams = await req.json();
+    if (!ConfigParamsValidator.test(_params)) {
+      return PasteAPIRepsonse.build(400, 'Invalid config.');
+    }
+    new_config = _params;
+  } catch (e) {
+    return PasteAPIRepsonse.build(400, 'Invalid request.');
+  }
+  const res = await Config.update(new_config, auth);
+  if (res) {
+    return PasteAPIRepsonse.build(200, 'Config updated.');
+  }
+  return PasteAPIRepsonse.build(400, 'Unable to update config.');
+});
+
 // Fallback route
 router.all('*', async () => {
   return PasteAPIRepsonse.build(404, 'Invalid endpoint.');
 });
 
 export default router;
+function to_human_readable_size(max_file_size: number) {
+  throw new Error('Function not implemented.');
+}
+

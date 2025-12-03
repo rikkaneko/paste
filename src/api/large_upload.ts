@@ -3,7 +3,7 @@ import { sha256 } from 'js-sha256';
 import { S3Client, PutObjectCommand, HeadObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { ERequest, Env } from '../types';
-import { gen_id, get_paste_info_obj } from '../utils';
+import { gen_id, get_auth, get_paste_info_obj } from '../utils';
 import { PasteIndexEntry, PasteType } from '../v2/schema';
 import Config from '../config';
 
@@ -124,14 +124,20 @@ router.post('/create', async (request, env, ctx) => {
     });
   }
 
-  if (file_size > 262144000) {
-    return new Response('Paste size must be under 250MB.\n', {
+  const storage = Config.get().filter_storage('large');
+  if (!storage) {
+    return new Response('Invalid service config\n', {
+      status: 500,
+    });
+  }
+
+  if (file_size > storage.max_file_size) {
+    return new Response(`Paste size must be under ${to_human_readable_size(storage.max_file_size)}.\n`, {
       status: 422,
     });
   }
 
   const uuid = gen_id();
-  const storage = Config.get().filter_storage('large');
 
   const s3 = new S3Client({
     region: storage!.region,
@@ -298,6 +304,37 @@ router.get('/:uuid', async (request, env, ctx) => {
   }
 
   const descriptor: PasteIndexEntry = JSON.parse(val);
+
+  // Check password if needed
+  if (descriptor.password !== undefined) {
+    let cert = get_auth(request);
+    if (cert == null) {
+      return new Response('This paste requires password.\n', {
+        status: 403,
+      });
+    } else if (descriptor.password !== sha256(cert).slice(0, 16)) {
+      return new Response('Incorrect password.\n', {
+        status: 403,
+      });
+    }
+  }
+
+  // Check if access_count_remain entry present
+  if (descriptor.max_access_n !== undefined) {
+    if (descriptor.access_n >= descriptor.max_access_n) {
+      return new Response('Paste expired.\n', {
+        status: 410,
+      });
+    }
+  }
+
+  descriptor.access_n++;
+  ctx.waitUntil(
+    env.PASTE_INDEX.put(uuid, JSON.stringify(descriptor), {
+      expirationTtl: descriptor.expired_at / 1000,
+    })
+  );
+
   if (descriptor.paste_type == PasteType.large_paste) {
     return new Response('Invalid operation.\n', {
       status: 400,
@@ -319,3 +356,7 @@ router.get('/:uuid', async (request, env, ctx) => {
 
   return new Response(JSON.stringify(result));
 });
+function to_human_readable_size(max_file_size: number) {
+  throw new Error('Function not implemented.');
+}
+

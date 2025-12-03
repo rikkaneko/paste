@@ -18,7 +18,7 @@
 
 import dedent from 'dedent-js';
 import { customAlphabet } from 'nanoid';
-import { Env } from './types';
+import { Env, ERequest } from './types';
 import { PasteIndexEntry, PasteTypeStr } from './v2/schema';
 import Config from './config';
 
@@ -151,12 +151,23 @@ export function check_password_rules(password: string): boolean {
   return password.match('^[A-z0-9]{1,}$') !== null;
 }
 // Extract username and password from Basic Authorization header
-export function get_auth(headers: Headers, required_scheme: string): string | [string, string] | null {
+export function get_auth(request: ERequest, auth_name: string = 'x-auth-key'): string | null {
+  const { headers, query } = request;
+  // Retrieve from query params
+  const pass = query[auth_name];
+  if (typeof pass == 'string' && pass.length > 0) {
+    return pass;
+  }
+  // Retrieve from a specified header
+  if (headers.has(auth_name)) {
+    return headers.get(auth_name);
+  }
+  // Retrieve from Authorization header
   if (headers.has('Authorization')) {
     const auth = headers.get('Authorization');
     const [scheme, encoded] = auth!.split(' ');
     // Validate authorization header format
-    if (!encoded || scheme !== required_scheme) {
+    if (!encoded) {
       return null;
     }
     if (scheme == 'Basic') {
@@ -169,13 +180,14 @@ export function get_auth(headers: Headers, required_scheme: string): string | [s
       if (index === -1 || decoded.match('[\\0-\x1F\x7F]')) {
         return null;
       }
-
-      return [decoded.slice(0, index), decoded.slice(index + 1)];
+      // Only return password componment
+      return decoded.slice(index + 1);
     } else if (scheme == 'Bearer') {
       if (encoded.length > 0) return encoded;
       else null;
     }
   }
+
   return null;
 }
 

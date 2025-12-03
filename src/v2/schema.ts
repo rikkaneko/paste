@@ -102,6 +102,8 @@ export interface StorageConfigParams {
   access_key_id: string;
   // Secret key associated with an AWS access key ID
   secret_access_key: string;
+  // Maximum acceptable file size for this endpoint
+  max_file_size: number;
 }
 
 export interface ConfigParams {
@@ -127,6 +129,7 @@ const storage_config_rules = {
   bucket_name: new Rule({ type: 'string', notEmpty: true }),
   access_key_id: new Rule({ type: 'string', notEmpty: true }),
   secret_access_key: new Rule({ type: 'string', notEmpty: true }),
+  max_file_size: new Rule({ type: 'int' }),
 };
 
 export const StorageConfigParamsValidator = new Validator(storage_config_rules);

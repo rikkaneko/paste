@@ -195,11 +195,11 @@ $(function () {
     title.val(this.files[0]?.name || '');
     file_stat.text(`${this.files[0]?.type || 'application/octet-stream'}, ${size}`);
 
-    // Check length <= 250MB
-    if (bytes > 262144000) {
+    // Check length <= 1GiB
+    if (bytes > 1073741824) {
       inputs.file.addClass('is-invalid');
       file_stat.addClass('text-danger');
-      file_stat.text('The uploaded file is larger than the 250MB limit.');
+      file_stat.text('The uploaded file is larger than the maximum file limit.');
     }
   });
 

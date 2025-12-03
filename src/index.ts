@@ -239,10 +239,18 @@ router.post('/', async (request, env, ctx) => {
     });
   }
 
-  // Check request.body size <= 25MB
+  const config = Config.get();
+  const storage = config.filter_storage('default');
+  if (!storage) {
+    return new Response('Invalid service config\n', {
+      status: 500,
+    });
+  }
+
+  // Check request.body size <= 10MB
   const size = buffer.byteLength;
-  if (size > 26214400) {
-    return new Response('Paste size must be under 25MB.\n', {
+  if (size > storage.max_file_size) {
+    return new Response(`Paste size must be under ${to_human_readable_size(storage.max_file_size)}.\n`, {
       status: 422,
     });
   }
@@ -251,14 +259,6 @@ router.post('/', async (request, env, ctx) => {
   if (buffer.byteLength == 0) {
     return new Response('Paste cannot be empty.\n', {
       status: 422,
-    });
-  }
-
-  const config = Config.get();
-  const storage = config.filter_storage('default');
-  if (!storage) {
-    return new Response('Invalid service config\n', {
-      status: 500,
     });
   }
 
@@ -356,30 +356,16 @@ router.get('/:uuid/:option?', async (request, env, ctx) => {
 
   // Check password if needed
   if (descriptor.password !== undefined) {
-    if (headers.has('Authorization')) {
-      let cert = get_auth(headers, 'Basic');
-      // Error occurred when parsing the header
-      if (cert === null) {
-        return new Response('Invalid Authorization header.', {
-          status: 400,
-        });
-      }
-      // Check password and username should be empty
-      if (cert[0].length != 0 || descriptor.password !== sha256(cert[1]).slice(0, 16)) {
-        return new Response('Incorrect password.\n', {
-          status: 401,
-          headers: {
-            'WWW-Authenticate': 'Basic realm="Requires password"',
-          },
-        });
-      }
-      // x-pass header
-    } else if (headers.has('x-pass')) {
-      if (descriptor.password !== sha256(headers.get('x-pass')!).slice(0, 16)) {
-        return new Response('Incorrect password.\n');
-      }
-    } else {
+    let cert = get_auth(request);
+    if (cert == null) {
       return new Response('This paste requires password.\n', {
+        status: 401,
+        headers: {
+          'WWW-Authenticate': 'Basic realm="Requires password"',
+        },
+      });
+    } else if (descriptor.password !== sha256(cert).slice(0, 16)) {
+      return new Response('Incorrect password.\n', {
         status: 401,
         headers: {
           'WWW-Authenticate': 'Basic realm="Requires password"',
@@ -390,7 +376,7 @@ router.get('/:uuid/:option?', async (request, env, ctx) => {
 
   // Check if access_count_remain entry present
   if (descriptor.max_access_n !== undefined) {
-    if (descriptor.access_n > descriptor.max_access_n) {
+    if (descriptor.access_n >= descriptor.max_access_n) {
       return new Response('Paste expired.\n', {
         status: 410,
       });
@@ -414,7 +400,8 @@ router.get('/:uuid/:option?', async (request, env, ctx) => {
       });
     }
 
-    if (descriptor.file_size >= 209715200) {
+    // Redirect to presigned url if file size larger than 100MB
+    if (descriptor.file_size >= 104857600) {
       const signed_url = await get_presign_url(uuid, descriptor);
       if (signed_url == null) {
         return new Response('No available download endpoint.\n', {
@@ -651,3 +638,7 @@ export default {
       // Update with itty-router 5.x
       .fetch(req, env, ctx),
 };
+function to_human_readable_size(max_file_size: number) {
+  throw new Error('Function not implemented.');
+}
+
