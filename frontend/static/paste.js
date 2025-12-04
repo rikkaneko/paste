@@ -92,13 +92,13 @@ async function build_paste_modal(uuid, show_qrcode = true, saved = true, one_tim
   const qrcode =
     'https://qrcode.nekoid.cc?' +
     new URLSearchParams({
-      q: paste_info.link,
-      type: 'utf8',
+      q: `https://pb.nekoid.cc/${paste_info.uuid}`,
+      type: 'svg',
     });
 
-  paste_modal.uuid.text(paste_info.link);
+  paste_modal.uuid.text(`https://pb.nekoid.cc/${paste_info.uuid}`);
   paste_modal.qrcode.prop('src', qrcode);
-  paste_modal.qrcode.prop('alt', paste_info.link);
+  paste_modal.qrcode.prop('alt', paste_info.uuid);
   paste_modal.id_copy_btn_icon.addClass('bi-clipboard');
   paste_modal.id_copy_btn_icon.removeClass('bi-check2');
   paste_modal.id_copy_btn.addClass('btn-primary');
@@ -123,13 +123,19 @@ async function build_paste_modal(uuid, show_qrcode = true, saved = true, one_tim
   Object.entries(paste_info).forEach(([key, val]) => {
     switch (key) {
       case 'paste_type':
-        $(`#paste_info_paste_type`).text(PasteTypeStr(val));
+        $(`#paste_info_type`).text(PasteTypeStr(val));
         break;
       case 'file_size':
         $(`#paste_info_human_readable_size`).text(to_human_readable_size(val));
         break;
       case 'has_password':
         $(`#paste_info_has_password`).text(val ? 'Yes' : 'No');
+        break;
+      case 'created_at':
+        $(`#paste_info_created_at`).text(new Date(val));
+        break;
+      case 'expired_at':
+        $(`#paste_info_expired_at`).text(new Date(val));
         break;
       default:
         $(`#paste_info_${key}`).text(val ?? '');
