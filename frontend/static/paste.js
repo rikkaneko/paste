@@ -279,20 +279,31 @@ $(function () {
 
       try {
         // Retrieve presigned URL for upload large paste
-        const res = await fetch(`${ENDPOINT}/api/large_upload/create`, {
+        const res = await fetch(`${ENDPOINT}/v2/create`, {
           method: 'POST',
-          body: filtered,
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            title: content.name,
+            mime_type: content.type,
+            file_size: content.size,
+            file_hash: file_hash,
+            password: formdata.get('auth-key') || undefined,
+            max_access_n: formdata.get('read-limit') || undefined,
+          }),
         });
 
         if (!res.ok) {
-          throw new Error(`Unable to create paste: ${(await res.text()) || `${res.status} ${res.statusText}`}`);
+          const error = await res.json();
+          throw new Error(`Unable to create paste: ${res.status} ${error.message}`);
         }
         // Upload the paste to the endpoint
         upload_button.text('Uploading...');
-        const create_result = await res.json();
-        const res1 = await fetch(create_result.signed_url, {
+        const response = await res.json();
+        const res1 = await fetch(response.PasteCreateUploadResponse.upload_url, {
           method: 'PUT',
-          headers: create_result.required_headers,
+          headers: response.PasteCreateUploadResponse.request_headers,
           body: content,
         });
 
@@ -300,16 +311,17 @@ $(function () {
           throw new Error(`Unable to upload paste: ${(await res1.text()) || `${res1.status} ${res1.statusText}`}`);
         }
         // Finialize the paste
-        const res2 = await fetch(`${ENDPOINT}/api/large_upload/complete/${create_result.uuid}`, {
+        const res2 = await fetch(`${ENDPOINT}/v2/complete/${response.uuid}`, {
           method: 'POST',
         });
         if (res2.ok) {
           const complete_result = await res2.json();
-          build_paste_modal(complete_result.paste_info, show_qrcode);
-          show_pop_alert(`Paste #${complete_result.paste_info.uuid} created!`, 'alert-success');
+          build_paste_modal(complete_result.PasteInfo, show_qrcode);
+          show_pop_alert(`Paste #${complete_result.PasteInfo.uuid} created!`, 'alert-success');
           pass_input.val('');
         } else {
-          throw new Error(`Unable to finialize paste: ${(await res2.text()) || `${res2.status} ${res2.statusText}`}`);
+          const error = await res.json();
+          throw new Error(`Unable to finialize paste: ${res.status} ${error.message}`);
         }
       } catch (err) {
         console.log('error', err);
