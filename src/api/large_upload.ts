@@ -93,11 +93,11 @@ router.post('/create', async (request, env, ctx) => {
   const uuid = gen_id();
 
   const s3 = new S3Client({
-    region: storage!.region,
-    endpoint: storage!.endpoint,
+    region: storage.region,
+    endpoint: storage.upload_endpoint ?? storage.endpoint,
     credentials: {
-      accessKeyId: storage!.access_key_id,
-      secretAccessKey: storage!.secret_access_key,
+      accessKeyId: storage.access_key_id,
+      secretAccessKey: storage.secret_access_key,
     },
     forcePathStyle: true,
   });
@@ -119,7 +119,7 @@ router.post('/create', async (request, env, ctx) => {
   const signed_url = await getSignedUrl(
     s3,
     new PutObjectCommand({
-      Bucket: storage!.bucket_name,
+      Bucket: storage.bucket_name,
       Key: uuid,
       ChecksumSHA256: encoded_hash,
       ChecksumAlgorithm: 'SHA256',

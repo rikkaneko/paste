@@ -97,10 +97,14 @@ export const PasteCreateParamsValidator = new Validator(param_rules);
 
 export interface StorageConfigParams {
   name: string;
-  // S3-compatible service endpoint
+  // S3-compatible service endpoint, must be publicly acccessible from Cloudflare CDN
   endpoint: string;
   // Custom endpoint for downloads
   download_endpoint?: string;
+  // Custom endpoint for downloads
+  upload_endpoint?: string;
+  // Control whether this endpoint can proxy through Cloudflare CDN
+  no_proxy_cdn?: boolean;
   // Region (Default to us-east-1 if not specified)
   region?: string;
   // Bucket name
@@ -132,6 +136,8 @@ const storage_config_rules = {
   name: new Rule({ type: 'string', notEmpty: true }),
   endpoint: new Rule({ type: 'url', notEmpty: true }),
   download_endpoint: new Rule({ type: 'url', notEmpty: true, optional: true }),
+  upload_endpoint: new Rule({ type: 'url', notEmpty: true, optional: true }),
+  no_proxy_cdn: new Rule({ type: 'boolean', optional: true }),
   region: new Rule({ type: 'string', optional: true }),
   bucket_name: new Rule({ type: 'string', notEmpty: true }),
   access_key_id: new Rule({ type: 'string', notEmpty: true }),

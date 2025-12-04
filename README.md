@@ -23,6 +23,8 @@ Please **DO NOT** abuse this service.
 - [ ] Render paste code with syntax highlighting
 - [x] Generate QR code for paste link
 - [x] Support URL redirection using [HTTP status codes 301](https://en.wikipedia.org/wiki/URL_redirection#HTTP_status_codes_3xx)
+- [x] Runtime config
+- [x] Multiple storage locations
 
 ## Service architecture
 
@@ -46,10 +48,14 @@ The actual schema for the runtime config is available at `StorageConfigParams` a
 ```typescript
 export interface StorageConfigParams {
   name: string;
-  // S3-compatible service endpoint
+  // S3-compatible service endpoint, must be publicly acccessible from Cloudflare CDN
   endpoint: string;
   // Custom endpoint for downloads
   download_endpoint?: string;
+  // Custom endpoint for downloads
+  upload_endpoint?: string;
+  // Control whether this endpoint can proxy through Cloudflare CDN
+  no_proxy_cdn?: boolean;
   // Region (Default to us-east-1 if not specified)
   region?: string;
   // Bucket name
@@ -210,8 +216,8 @@ The request body contains the upload content.
 
 |Type|Description|
 |-|-|
-|`paste`|Normal paste (<25MB)|
-|`large_paste`|Large paste(>25MB)|
+|`paste`|Normal paste|
+|`large_paste`|Large paste|
 |`link`|URL link to be redirected|
 
 #### Response
@@ -263,6 +269,7 @@ Currently, only the following options is supported for `option`
 |`download`|Download paste as attachment|
 |`raw`|Display paste as plain text|
 |`link`|Treat paste content as URL link|
+|`presign`|Redirect to the presigned URL of the paste (large_paste only)|
 
 *The authentication requirement is as same as `GET /<uuid>`.*
 

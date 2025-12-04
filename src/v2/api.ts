@@ -150,7 +150,7 @@ router.post('/create', async (req, env, ctx) => {
 
   const s3 = new S3Client({
     region: storage.region,
-    endpoint: storage.endpoint,
+    endpoint: storage.upload_endpoint ?? storage.endpoint,
     credentials: {
       accessKeyId: storage.access_key_id,
       secretAccessKey: storage.secret_access_key,
@@ -218,7 +218,7 @@ router.post('/create', async (req, env, ctx) => {
     })
   );
 
-  return new Response(JSON.stringify(result));
+  return PasteAPIRepsonse.build(200, result, 'PasteCreateUploadResponse');
 });
 
 /* POST /complete/:uuid

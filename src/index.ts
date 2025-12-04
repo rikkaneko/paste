@@ -393,8 +393,11 @@ router.get('/:uuid/:option?', async (request, env, ctx) => {
       });
     }
 
+    const storage = config.filter_storage(descriptor.location ?? 'large');
+
     // Redirect to presigned url if user request presign link file size larger than 100MB
-    if (option === 'presign' || descriptor.file_size >= 104857600) {
+    // New to 2.3: New fetch option `presign` to generate the presigned url to the paste
+    if (option === 'presign' || storage?.no_proxy_cdn || descriptor.file_size >= 104857600) {
       const signed_url = await get_presign_url(uuid, descriptor);
       if (signed_url == null) {
         return new Response('This location is currently not avilable.\n', {
