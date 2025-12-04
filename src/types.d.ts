@@ -16,7 +16,6 @@ export interface PasteIndexEntry {
   expiration?: number; // New added in 2.0
   file_size: number;
   password?: string;
-  editable?: boolean; // Default: False (unsupported)
   access_n: number;
   max_access_n?: number;
   type: PASTE_TYPES;

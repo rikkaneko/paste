@@ -21,6 +21,8 @@ import { customAlphabet } from 'nanoid';
 import { Env, ERequest } from './types';
 import { PasteIndexEntry, PasteTypeStr } from './v2/schema';
 import Config from './config';
+import { GetObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
 export function gen_id(): string {
   return customAlphabet(
@@ -191,7 +193,7 @@ export function get_auth(request: ERequest, auth_name: string = 'x-auth-key'): s
   return null;
 }
 
-function to_human_readable_size(bytes: number): string {
+export function to_human_readable_size(bytes: number): string {
   let size = bytes + ' bytes';
   const units = ['KiB', 'MiB', 'GiB', 'TiB'];
   for (let i = 0, approx = bytes / 1024; approx > 1; approx /= 1024, i++) {
@@ -200,11 +202,58 @@ function to_human_readable_size(bytes: number): string {
   return size;
 }
 
-function hexToBase64(hexString: string): string {
+export function hexToBase64(hexString: string): string {
   let binaryString = '';
   for (let i = 0; i < hexString.length; i += 2) {
-    const byte = parseInt(hexString.substr(i, 2), 16);
+    const byte = parseInt(hexString.slice(i, 2), 16);
     binaryString += String.fromCharCode(byte);
   }
   return btoa(binaryString);
+}
+
+export async function get_presign_url(uuid: string, descriptor: PasteIndexEntry) {
+  // Use cached presigned url if expiration is more than 10 mins
+  if (descriptor.cached_presigned_url) {
+    const expiration = new Date(descriptor.cached_presigned_url_expiration ?? 0);
+    const time_to_renew = new Date(Date.now() + 600 * 1000); // 10 mins after
+    if (expiration >= time_to_renew) {
+      return descriptor.cached_presigned_url;
+    }
+  }
+
+  const storage = Config.get().filter_storage('large');
+  if (!storage) {
+    return null;
+  }
+
+  const download_url = storage.download_endpoint ?? storage.endpoint;
+
+  // Generate Presigned Request
+  const s3 = new S3Client({
+    region: storage.region,
+    endpoint: download_url,
+    credentials: {
+      accessKeyId: storage.access_key_id,
+      secretAccessKey: storage.secret_access_key,
+    },
+    forcePathStyle: true,
+  });
+
+  const signed = await getSignedUrl(
+    s3,
+    new GetObjectCommand({
+      Bucket: storage.bucket_name,
+      Key: uuid,
+      ResponseContentDisposition: `inline; filename*=UTF-8''${encodeURIComponent(descriptor.title ?? uuid)}`,
+      ResponseContentType: descriptor.mime_type ?? 'text/plain; charset=UTF-8;',
+    }),
+    {
+      expiresIn: 14400,
+    }
+  );
+
+  descriptor.cached_presigned_url = signed;
+  descriptor.cached_presigned_url_expiration = new Date(Date.now() + 14400 * 1000).getTime();
+
+  return signed;
 }

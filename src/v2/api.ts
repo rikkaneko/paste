@@ -30,7 +30,6 @@ router.get('/info/:uuid', async (req, env, ctx) => {
   const { uuid } = req.params;
   const config = Config.get().config();
   if (uuid.length !== config.uuid_length) {
-    new PasteAPIRepsonse();
     return PasteAPIRepsonse.build(442, 'Invalid UUID.');
   }
   const val = await env.PASTE_INDEX.get(uuid);
@@ -280,41 +279,6 @@ router.post('/complete/:uuid', async (req, env, ctx) => {
   ctx.waitUntil(env.PASTE_INDEX.put(uuid, JSON.stringify(descriptor), { expirationTtl: 2419200 }));
 
   return PasteAPIRepsonse.info(descriptor);
-});
-
-/* DELETE /:uuid
- * Header: Authorization: Basic <password>
- *
- * Response:
- * <empty> | <Error>
- */
-router.delete('/:uuid', async (req, env, ctx) => {
-  const { uuid } = req.params;
-  const config = Config.get().config();
-  if (uuid.length !== config.uuid_length) {
-    new PasteAPIRepsonse();
-    return PasteAPIRepsonse.build(442, 'Invalid UUID.');
-  }
-
-  // Delete paste logic
-  const val = await env.PASTE_INDEX.get(uuid);
-  if (val === null) {
-    return PasteAPIRepsonse.build(404, 'Paste not found.');
-  }
-
-  // TODO Delete paste logic
-  return PasteAPIRepsonse.build(200, 'This endpoint is not ready.');
-});
-
-/* POST /upload/:uuid?code=<authorization-code>
- * Body: <file-content>
- *
- * Response:
- * <PasteCreateUploadResponse> | <Error>
- */
-router.post('/upload', async (req, env, ctx) => {
-  // TODO Upload paste logic
-  return PasteAPIRepsonse.build(200, 'This endpoint is not ready.');
 });
 
 router.get('/config', async (req, env, ctx) => {

@@ -220,6 +220,6 @@ export class PasteAPIRepsonse {
       created_at: descriptor.created_at,
       expired_at: descriptor.expired_at,
     };
-    return this.build(200, paste_info, undefined, 'PasteInfo');
+    return this.build(200, paste_info, 'PasteInfo');
   }
 }

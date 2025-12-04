@@ -1,60 +1,13 @@
 import { Router } from 'itty-router';
 import { sha256 } from 'js-sha256';
-import { S3Client, PutObjectCommand, HeadObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { ERequest, Env } from '../types';
-import { gen_id, get_auth, get_paste_info_obj } from '../utils';
+import { gen_id, get_auth, get_paste_info_obj, get_presign_url, to_human_readable_size } from '../utils';
 import { PasteIndexEntry, PasteType } from '../v2/schema';
 import Config from '../config';
 
 export const router = Router<ERequest, [Env, ExecutionContext]>({ base: '/api/large_upload' });
-
-export async function get_presign_url(uuid: string, descriptor: PasteIndexEntry) {
-  // Use cached presigned url if expiration is more than 10 mins
-  if (descriptor.cached_presigned_url) {
-    const expiration = new Date(descriptor.cached_presigned_url_expiration ?? 0);
-    const time_to_renew = new Date(Date.now() + 600 * 1000); // 10 mins after
-    if (expiration >= time_to_renew) {
-      return descriptor.cached_presigned_url;
-    }
-  }
-
-  const storage = Config.get().filter_storage('large');
-  if (!storage) {
-    return null;
-  }
-
-  const download_url = storage.download_endpoint ?? storage.endpoint;
-
-  // Generate Presigned Request
-  const s3 = new S3Client({
-    region: storage.region,
-    endpoint: download_url,
-    credentials: {
-      accessKeyId: storage.access_key_id,
-      secretAccessKey: storage.secret_access_key,
-    },
-    forcePathStyle: true,
-  });
-
-  const signed = await getSignedUrl(
-    s3,
-    new GetObjectCommand({
-      Bucket: storage.bucket_name,
-      Key: uuid,
-      ResponseContentDisposition: `inline; filename*=UTF-8''${encodeURIComponent(descriptor.title ?? uuid)}`,
-      ResponseContentType: descriptor.mime_type ?? 'text/plain; charset=UTF-8;',
-    }),
-    {
-      expiresIn: 14400,
-    }
-  );
-
-  descriptor.cached_presigned_url = signed;
-  descriptor.cached_presigned_url_expiration = new Date(Date.now() + 14400 * 1000).getTime();
-
-  return signed;
-}
 
 router.all('*', (request, env, ctx) => {
   const storage = Config.get().filter_storage('large');
@@ -356,7 +309,3 @@ router.get('/:uuid', async (request, env, ctx) => {
 
   return new Response(JSON.stringify(result));
 });
-function to_human_readable_size(max_file_size: number) {
-  throw new Error('Function not implemented.');
-}
-
