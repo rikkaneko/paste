@@ -33,6 +33,8 @@ export interface PasteInfo {
   file_size: number;
   mime_type?: string;
   has_password: boolean;
+  // Add in v2.3: support storage location selection
+  location?: string;
   access_n: number;
   max_access_n?: number;
   created_at: number;
@@ -56,7 +58,9 @@ export interface PasteIndexEntry {
     pending_upload?: boolean;
     saved_expired_at?: number;
   };
-  // Only available when large_paste or using /v2/create
+  // Only available for /v2/create
+  // Add in v2.3: support storage location selection
+  location?: string;
   cached_presigned_url?: string;
   cached_presigned_url_expiration?: number;
 }
@@ -68,6 +72,8 @@ export interface PasteCreateParams {
   mime_type?: string;
   file_size: number;
   file_hash: string;
+  // Add in v2.3: support storage location selection
+  location?: string;
   expired_at?: number;
 }
 
@@ -78,6 +84,7 @@ const param_rules = {
   mime_type: new Rule({ type: 'string', optional: true, notEmpty: true }),
   file_size: new Rule({ type: 'int', min: 0 }),
   file_hash: new Rule({ type: 'string', minLength: 64, maxLength: 64 }),
+  location: new Rule({ type: 'string' }),
   expired_at: new Rule({
     type: 'int',
     optional: true,

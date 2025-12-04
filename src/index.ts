@@ -332,9 +332,9 @@ router.all('/v2/*', v2api.fetch);
 router.get('/:uuid/:option?', async (request, env, ctx) => {
   const { headers } = request;
   const { uuid, option } = request.params;
-  const config = Config.get().config();
+  const config = Config.get();
   // UUID format: [A-z0-9]{UUID_LENGTH}
-  if (uuid.length !== config.uuid_length) {
+  if (uuid.length !== config.config().uuid_length) {
     return new Response('Invalid UUID.\n', {
       status: 442,
     });
@@ -383,13 +383,6 @@ router.get('/:uuid/:option?', async (request, env, ctx) => {
     }
   }
 
-  descriptor.access_n++;
-  ctx.waitUntil(
-    env.PASTE_INDEX.put(uuid, JSON.stringify(descriptor), {
-      expirationTtl: descriptor.expired_at / 1000,
-    })
-  );
-
   // New added in 2.0
   // Handle large_paste
   // Use presigned url generation only if the file size larger than 200MB, use request forwarding instead
@@ -400,15 +393,17 @@ router.get('/:uuid/:option?', async (request, env, ctx) => {
       });
     }
 
-    // Redirect to presigned url if file size larger than 100MB
-    if (descriptor.file_size >= 104857600) {
+    // Redirect to presigned url if user request presign link file size larger than 100MB
+    if (option === 'presign' || descriptor.file_size >= 104857600) {
       const signed_url = await get_presign_url(uuid, descriptor);
       if (signed_url == null) {
-        return new Response('No available download endpoint.\n', {
-          status: 404,
+        return new Response('This location is currently not avilable.\n', {
+          status: 500,
         });
       }
 
+      // Accumlate access counter
+      descriptor.access_n++;
       ctx.waitUntil(
         env.PASTE_INDEX.put(uuid, JSON.stringify(descriptor), {
           expirationTtl: descriptor.expired_at / 1000,
@@ -430,7 +425,7 @@ router.get('/:uuid/:option?', async (request, env, ctx) => {
   const cache = caches.default;
   const match_etag = headers.get('If-None-Match') || undefined;
   // Define the Request object as cache key
-  const req_key = new Request(`${config.public_url}/${uuid}`, {
+  const req_key = new Request(`${config.config().public_url}/${uuid}`, {
     method: 'GET',
     headers: match_etag
       ? {
@@ -443,10 +438,11 @@ router.get('/:uuid/:option?', async (request, env, ctx) => {
   let res = await cache.match(req_key);
   if (res === undefined) {
     // Use althernative endpoint and credentials for large_type
-    const paste_type = descriptor.paste_type == PasteType.large_paste ? 'large' : 'default';
-    const storage = Config.get().filter_storage(paste_type);
+    // Default to `large` storage if not specified
+    const location = descriptor.location ?? (descriptor.paste_type == PasteType.large_paste ? 'large' : 'default');
+    const storage = config.filter_storage(location);
     if (!storage) {
-      return new Response('Internal server error.\n', {
+      return new Response('This location is currently not avilable.\n', {
         status: 500,
       });
     }
@@ -532,6 +528,15 @@ router.get('/:uuid/:option?', async (request, env, ctx) => {
         'content-disposition',
         `attachment; filename*=UTF-8''${encodeURIComponent(descriptor.title ?? uuid)}`
       );
+
+    // Accumlate access counter
+    descriptor.access_n++;
+    ctx.waitUntil(
+      env.PASTE_INDEX.put(uuid, JSON.stringify(descriptor), {
+        expirationTtl: descriptor.expired_at / 1000,
+      })
+    );
+
     return res;
   }
 
@@ -548,6 +553,15 @@ router.get('/:uuid/:option?', async (request, env, ctx) => {
       'content-disposition',
       `attachment; filename*=UTF-8''${encodeURIComponent(descriptor.title ?? uuid)}`
     );
+
+  // Accumlate access counter
+  descriptor.access_n++;
+  ctx.waitUntil(
+    env.PASTE_INDEX.put(uuid, JSON.stringify(descriptor), {
+      expirationTtl: descriptor.expired_at / 1000,
+    })
+  );
+
   return nres;
 });
 
@@ -586,10 +600,10 @@ router.delete('/:uuid', async (request, env, ctx) => {
 
   const cache = caches.default;
   // Distinguish the endpoint for large_paste and normal paste
-  const paste_type = descriptor.paste_type == PasteType.large_paste ? 'large' : 'default';
-  const storage = Config.get().filter_storage(paste_type);
+  const location = descriptor.location ?? (descriptor.paste_type == PasteType.large_paste ? 'large' : 'default');
+  const storage = config.filter_storage(location);
   if (!storage) {
-    return new Response('Unsupported paste type.\n', {
+    return new Response('This location is currently not avilable.\n', {
       status: 500,
     });
   }

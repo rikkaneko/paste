@@ -3,7 +3,7 @@ import { sha256 } from 'js-sha256';
 import { S3Client, PutObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { ERequest, Env } from '../types';
-import { gen_id, get_auth, get_paste_info_obj, get_presign_url, to_human_readable_size } from '../utils';
+import { gen_id, get_auth, get_paste_info_obj, get_presign_url, hexToBase64, to_human_readable_size } from '../utils';
 import { PasteIndexEntry, PasteType } from '../v2/schema';
 import Config from '../config';
 
@@ -66,8 +66,8 @@ router.post('/create', async (request, env, ctx) => {
     }
 
     file_hash = formdata.get('file-sha256-hash') ?? undefined;
-    if (!file_hash || file_hash.length !== 44) {
-      return new Response('Invalid file-sha256-hash, expecting a Base64 encoded SHA256 hash.\n', {
+    if (!file_hash || file_hash.length !== 64) {
+      return new Response('Invalid file-sha256-hash, expecting a 64 digit SHA256 hash hex.\n', {
         status: 422,
       });
     }
@@ -104,9 +104,15 @@ router.post('/create', async (request, env, ctx) => {
 
   const current = Date.now();
   const expiration = new Date(current + 14400 * 1000).getTime();
+  const encoded_hash = hexToBase64(file_hash);
+  if (!encoded_hash) {
+    return new Response('Invalid SHA256 hex.\n', {
+      status: 400,
+    });
+  }
   const required_headers = {
     'Content-Length': file_size.toString(),
-    'x-amz-checksum-sha256': file_hash,
+    'x-amz-checksum-sha256': encoded_hash,
   };
 
   // Generate Presigned Request
@@ -115,7 +121,7 @@ router.post('/create', async (request, env, ctx) => {
     new PutObjectCommand({
       Bucket: storage!.bucket_name,
       Key: uuid,
-      ChecksumSHA256: file_hash,
+      ChecksumSHA256: encoded_hash,
       ChecksumAlgorithm: 'SHA256',
       ContentType: file_size.toString(),
     }),

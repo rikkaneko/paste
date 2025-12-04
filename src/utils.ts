@@ -18,8 +18,8 @@
 
 import dedent from 'dedent-js';
 import { customAlphabet } from 'nanoid';
-import { Env, ERequest } from './types';
-import { PasteIndexEntry, PasteTypeStr } from './v2/schema';
+import { ERequest } from './types';
+import { PasteIndexEntry, PasteType, PasteTypeStr } from './v2/schema';
 import Config from './config';
 import { GetObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
@@ -202,12 +202,16 @@ export function to_human_readable_size(bytes: number): string {
   return size;
 }
 
-export function hexToBase64(hexString: string): string {
-  let binaryString = '';
-  for (let i = 0; i < hexString.length; i += 2) {
-    const byte = parseInt(hexString.slice(i, 2), 16);
-    binaryString += String.fromCharCode(byte);
+export function hexToBase64(hex: string): string | null {
+  // Ensure the input is a valid 64-digit hex string
+  if (!/^[0-9a-fA-F]{64}$/.test(hex)) {
+    return null;
   }
+  let binaryArray = [];
+  for (let i = 0; i < hex.length; i += 2) {
+    binaryArray.push(parseInt(hex.slice(i, i + 2), 16));
+  }
+  const binaryString = String.fromCharCode(...binaryArray);
   return btoa(binaryString);
 }
 
@@ -221,7 +225,9 @@ export async function get_presign_url(uuid: string, descriptor: PasteIndexEntry)
     }
   }
 
-  const storage = Config.get().filter_storage('large');
+  const location = descriptor.location ?? (descriptor.paste_type == PasteType.large_paste ? 'large' : 'default');
+  const config = Config.get();
+  const storage = config.filter_storage(location);
   if (!storage) {
     return null;
   }
@@ -248,12 +254,12 @@ export async function get_presign_url(uuid: string, descriptor: PasteIndexEntry)
       ResponseContentType: descriptor.mime_type ?? 'text/plain; charset=UTF-8;',
     }),
     {
-      expiresIn: 14400,
+      expiresIn: 1800,
     }
   );
 
   descriptor.cached_presigned_url = signed;
-  descriptor.cached_presigned_url_expiration = new Date(Date.now() + 14400 * 1000).getTime();
+  descriptor.cached_presigned_url_expiration = new Date(Date.now() + 1800 * 1000).getTime();
 
   return signed;
 }

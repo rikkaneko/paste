@@ -133,7 +133,7 @@ function build_paste_modal(paste_info, show_qrcode = true, saved = true, one_tim
  */
 async function get_file_hash(file) {
   const word_arr = CryptoJS.lib.WordArray.create(await file.arrayBuffer());
-  const file_hash = CryptoJS.SHA256(word_arr).toString(CryptoJS.enc.Base64);
+  const file_hash = CryptoJS.SHA256(word_arr).toString(CryptoJS.enc.Hex);
   return file_hash;
 }
 

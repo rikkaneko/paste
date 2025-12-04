@@ -12,7 +12,7 @@ import {
   ConfigParams,
   ConfigParamsValidator,
 } from './schema';
-import { gen_id, get_auth } from '../utils';
+import { gen_id, get_auth, hexToBase64 } from '../utils';
 import { sha256 } from 'js-sha256';
 import { HeadObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
@@ -123,10 +123,6 @@ router.post('/info/:uuid', async (req, env, ctx) => {
  */
 router.post('/create', async (req, env, ctx) => {
   let params: PasteCreateParams | undefined;
-  const storage = Config.get().filter_storage('large');
-  if (!storage) {
-    return PasteAPIRepsonse.build(501, 'This endpoint is disabled.');
-  }
   try {
     const _params: PasteCreateParams = await req.json();
     if (!PasteCreateParamsValidator.test(_params)) {
@@ -135,6 +131,14 @@ router.post('/create', async (req, env, ctx) => {
     params = _params;
   } catch (e) {
     return PasteAPIRepsonse.build(400, 'Invalid request.');
+  }
+
+  const config = Config.get();
+  // Default to `large` storage if not specified
+  const location = params.location ?? 'large';
+  const storage = config.filter_storage(location);
+  if (!storage) {
+    return PasteAPIRepsonse.build(400, 'Invalid location.');
   }
 
   // Create paste logic
@@ -157,9 +161,14 @@ router.post('/create', async (req, env, ctx) => {
   const current_time = Date.now();
   // Temporary expiration time
   const expiration = new Date(current_time + 900 * 1000).getTime();
+  const encoded_hash = hexToBase64(params.file_hash);
+  if (!encoded_hash) {
+    return PasteAPIRepsonse.build(400, 'Invalid SHA256 hex.');
+  }
+
   const required_headers = {
     'Content-Length': params.file_size.toString(),
-    'x-amz-checksum-sha256': params.file_hash,
+    'x-amz-checksum-sha256': encoded_hash,
   };
 
   // Generate Presigned Request
@@ -168,7 +177,7 @@ router.post('/create', async (req, env, ctx) => {
     new PutObjectCommand({
       Bucket: storage.bucket_name,
       Key: uuid,
-      ChecksumSHA256: params.file_hash,
+      ChecksumSHA256: encoded_hash,
       ChecksumAlgorithm: 'SHA256',
       ContentType: params.file_size.toString(),
     }),
@@ -196,6 +205,7 @@ router.post('/create', async (req, env, ctx) => {
     file_size: params.file_size,
     created_at: current_time,
     expired_at: expiration,
+    location: location,
     upload_track: {
       pending_upload: true,
       saved_expired_at: params.expired_at,
@@ -219,10 +229,6 @@ router.post('/create', async (req, env, ctx) => {
 router.post('/complete/:uuid', async (req, env, ctx) => {
   const { uuid } = req.params;
   const config = Config.get().config();
-  const storage = Config.get().filter_storage('large');
-  if (!storage) {
-    return PasteAPIRepsonse.build(501, 'This endpoint is disabled.');
-  }
   if (uuid.length !== config.uuid_length) {
     new PasteAPIRepsonse();
     return PasteAPIRepsonse.build(442, 'Invalid UUID.');
@@ -235,8 +241,13 @@ router.post('/complete/:uuid', async (req, env, ctx) => {
   }
 
   const descriptor: PasteIndexEntry = JSON.parse(val);
-  if (descriptor.paste_type !== PasteType.large_paste || !descriptor.upload_track?.pending_upload) {
-    return PasteAPIRepsonse.build(442, 'Invalid operation.');
+  if (!descriptor.location || !descriptor.upload_track?.pending_upload) {
+    return PasteAPIRepsonse.build(442, 'Invalid request');
+  }
+
+  const storage = Config.get().filter_storage(descriptor.location);
+  if (!storage) {
+    return PasteAPIRepsonse.build(500, 'This location is currently not avilable.');
   }
 
   const s3 = new S3Client({
