@@ -80,11 +80,24 @@ function remove_pop_alert() {
   if (alert.length) alert.remove();
 }
 
-function build_paste_modal(paste_info, show_qrcode = true, saved = true, one_time_only = false, build_only = false) {
+async function build_paste_modal(uuid, show_qrcode = true, saved = true, one_time_only = false, build_only = false) {
   let tooltip = bootstrap.Tooltip.getInstance(paste_modal.id_copy_btn);
+  // Fetch paste info
+  const res = await fetch(`${ENDPOINT}/v2/info/${uuid}`);
+  if (!res.ok) {
+    show_pop_alert('Unbale to fetch paste info.', 'alert-danger');
+    return false;
+  }
+  const paste_info = (await res.json()).PasteInfo;
+  const qrcode =
+    'https://qrcode.nekoid.cc?' +
+    new URLSearchParams({
+      q: paste_info.link,
+      type: 'utf8',
+    });
 
   paste_modal.uuid.text(paste_info.link);
-  paste_modal.qrcode.prop('src', paste_info.link_qr);
+  paste_modal.qrcode.prop('src', qrcode);
   paste_modal.qrcode.prop('alt', paste_info.link);
   paste_modal.id_copy_btn_icon.addClass('bi-clipboard');
   paste_modal.id_copy_btn_icon.removeClass('bi-check2');
@@ -93,8 +106,8 @@ function build_paste_modal(paste_info, show_qrcode = true, saved = true, one_tim
   tooltip.setContent({ '.tooltip-inner': 'Click to copy' });
 
   if (saved) {
-    cached_paste_info = paste_info;
-    localStorage.setItem('last_paste', JSON.stringify(paste_info));
+    cached_paste_info = uuid;
+    localStorage.setItem('last_paste', uuid);
     console.log('Paste saved');
     show_saved_btn.prop('disabled', false);
   }
@@ -108,8 +121,19 @@ function build_paste_modal(paste_info, show_qrcode = true, saved = true, one_tim
   else paste_modal.forget_btn.addClass('d-none');
 
   Object.entries(paste_info).forEach(([key, val]) => {
-    if (key.includes('link')) return;
-    $(`#paste_info_${key}`).text(val ?? '');
+    switch (key) {
+      case 'paste_type':
+        $(`#paste_info_paste_type`).text(PasteTypeStr(val));
+        break;
+      case 'file_size':
+        $(`#paste_info_human_readable_size`).text(to_human_readable_size(val));
+        break;
+      case 'has_password':
+        $(`#paste_info_has_password`).text(val ? 'Yes' : 'No');
+        break;
+      default:
+        $(`#paste_info_${key}`).text(val ?? '');
+    }
   });
 
   if (paste_info.max_access_n !== undefined) {
@@ -173,7 +197,7 @@ $(function () {
   });
 
   // Restore saved paste info
-  cached_paste_info = JSON.parse(localStorage.getItem('last_paste'));
+  cached_paste_info = localStorage.getItem('last_paste');
   if (cached_paste_info) {
     show_saved_btn.prop('disabled', false);
     console.log('Restored cache paste');
@@ -188,12 +212,8 @@ $(function () {
     }
     let bytes = this.files[0]?.size ?? 0;
     let size = bytes + ' bytes';
-    const units = ['KiB', 'MiB', 'GiB', 'TiB'];
-    for (let i = 0, approx = bytes / 1024; approx > 1; approx /= 1024, i++) {
-      size = approx.toFixed(3) + ' ' + units[i];
-    }
     title.val(this.files[0]?.name || '');
-    file_stat.text(`${this.files[0]?.type || 'application/octet-stream'}, ${size}`);
+    file_stat.text(`${this.files[0]?.type || 'application/octet-stream'}, ${to_human_readable_size(size)}`);
 
     // Check length <= 1GiB
     if (bytes > 1073741824) {
@@ -266,7 +286,7 @@ $(function () {
         title: content.name,
         'file-size': content.size,
         'file-sha256-hash': file_hash,
-        'mime-type': content.type,
+        'mime-type': content.type || undefined,
         'read-limit': formdata.get('read-limit') || undefined,
         pass: formdata.get('auth-key') || undefined,
       };
@@ -286,7 +306,7 @@ $(function () {
           },
           body: JSON.stringify({
             title: content.name,
-            mime_type: content.type,
+            mime_type: content.type || undefined,
             file_size: content.size,
             file_hash: file_hash,
             password: formdata.get('auth-key') || undefined,
@@ -311,16 +331,16 @@ $(function () {
           throw new Error(`Unable to upload paste: ${(await res1.text()) || `${res1.status} ${res1.statusText}`}`);
         }
         // Finialize the paste
-        const res2 = await fetch(`${ENDPOINT}/v2/complete/${response.uuid}`, {
+        const uuid = response.PasteCreateUploadResponse.uuid;
+        const res2 = await fetch(`${ENDPOINT}/v2/complete/${uuid}`, {
           method: 'POST',
         });
         if (res2.ok) {
-          const complete_result = await res2.json();
-          build_paste_modal(complete_result.PasteInfo, show_qrcode);
-          show_pop_alert(`Paste #${complete_result.PasteInfo.uuid} created!`, 'alert-success');
+          build_paste_modal(uuid, show_qrcode);
+          show_pop_alert(`Paste #${uuid} created!`, 'alert-success');
           pass_input.val('');
         } else {
-          const error = await res.json();
+          const error = await res2.json();
           throw new Error(`Unable to finialize paste: ${res.status} ${error.message}`);
         }
       } catch (err) {
@@ -353,7 +373,7 @@ $(function () {
 
         if (res.ok) {
           const paste_info = await res.json();
-          build_paste_modal(paste_info, show_qrcode, true);
+          build_paste_modal(paste_info.uuid, show_qrcode, true);
           show_pop_alert(`Paste #${paste_info.uuid} created!`, 'alert-success');
           pass_input.val('');
         } else {
@@ -401,8 +421,7 @@ $(function () {
     try {
       const res = await fetch(`${ENDPOINT}/${uuid}/settings?${new URLSearchParams({ json: '1' })}`);
       if (res.ok) {
-        const paste_info = await res.json();
-        build_paste_modal(paste_info, show_qrcode, false, true);
+        build_paste_modal(uuid, show_qrcode, false, true);
       } else {
         show_pop_alert('Invalid Paste ID.', 'alert-warning');
       }
@@ -458,4 +477,18 @@ function select_input_type(name) {
   input_div[name].collapse('show');
   inputs[name].prop('disabled', false);
   inputs[name].prop('required', true);
+}
+
+function PasteTypeStr(p) {
+  if (p <= 0 || p >= 4) return 'unknown';
+  return ['paste', 'link', 'large_paste'].at(p - 1);
+}
+
+function to_human_readable_size(bytes) {
+  let size = bytes + ' bytes';
+  const units = ['KiB', 'MiB', 'GiB', 'TiB'];
+  for (let i = 0, approx = bytes / 1024; approx > 1; approx /= 1024, i++) {
+    size = approx.toFixed(3) + ' ' + units[i];
+  }
+  return size;
 }

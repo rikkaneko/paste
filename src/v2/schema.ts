@@ -84,7 +84,7 @@ const param_rules = {
   mime_type: new Rule({ type: 'string', optional: true, notEmpty: true }),
   file_size: new Rule({ type: 'int', min: 0 }),
   file_hash: new Rule({ type: 'string', minLength: 64, maxLength: 64 }),
-  location: new Rule({ type: 'string' }),
+  location: new Rule({ type: 'string', optional: true }),
   expired_at: new Rule({
     type: 'int',
     optional: true,
