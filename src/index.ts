@@ -21,7 +21,6 @@ import { Router, error, cors } from 'itty-router';
 import { ERequest, Env } from './types';
 import { serve_static } from './proxy';
 import { check_password_rules, get_paste_info, get_auth, gen_id, get_presign_url } from './utils';
-import { router as large_upload } from './api/large_upload';
 import v2api from './v2/api';
 import { PasteIndexEntry, PasteTypeFrom, PasteType } from './v2/schema';
 import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
@@ -321,9 +320,6 @@ router.post('/', async (request, env, ctx) => {
     });
   }
 });
-
-// Handle large upload (> 25MB)
-router.all('/api/large_upload/*', large_upload.fetch);
 
 /* New Paste v2 RESTful API */
 router.all('/v2/*', v2api.fetch);

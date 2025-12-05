@@ -132,10 +132,10 @@ async function build_paste_modal(uuid, show_qrcode = true, saved = true, one_tim
         $(`#paste_info_has_password`).text(val ? 'Yes' : 'No');
         break;
       case 'created_at':
-        $(`#paste_info_created_at`).text(new Date(val));
+        $(`#paste_info_created_at`).text(new Date(val).toGMTString());
         break;
       case 'expired_at':
-        $(`#paste_info_expired_at`).text(new Date(val));
+        $(`#paste_info_expired_at`).text(new Date(val).toGMTString());
         break;
       default:
         $(`#paste_info_${key}`).text(val ?? '');

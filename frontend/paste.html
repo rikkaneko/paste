@@ -213,16 +213,16 @@
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
-        <div class="mb-2 input-group justify-content-center">
+        <div class="mb-2 input-group justify-content-center flex-nowrap">
           <span class="input-group-text" id="paste_uuid"></span>
           <button class="btn btn-primary" type="button" id="id_copy_button"
                   data-bs-toggle="tooltip" data-bs-placement="bottom" title="Click to copy">
             <i class="bi bi-clipboard" id="id_copy_button_icon"></i>
           </button>
         </div>
-        <img src="" class="mb-3 rounded mx-auto d-block w-75" alt="" id="paste_qrcode" style="max-width: 280px">
+        <img src="" class="mb-3 rounded mx-auto d-block w-75" alt="" id="paste_qrcode" style="min-width: 240px; max-width: 280px">
         <div class="mb-3 mx-auto">
-          <table class="table table-striped table-bordered align-middle caption-top mx-auto" style="max-width: 280px;">
+          <table class="table table-striped table-bordered align-middle caption-top mx-auto" style="min-width: 280px; max-width: 400px;">
             <caption>Paste information</caption>
             <tbody id="paste_info_table">
             <tr>
@@ -231,7 +231,7 @@
             </tr>
             <tr>
               <td class="text-center col-3 text-nowrap">Title</td>
-              <td class="text-center col-6" id="paste_info_title">-</td>
+              <td class="text-center col-6 scroll-inv" id="paste_info_title">-</td>
             </tr>
             <tr>
               <td class="text-center col-3 text-nowrap">Type</td>
@@ -251,11 +251,11 @@
             </tr>
             <tr>
               <td class="text-center col-3 text-nowrap">Created</td>
-              <td class="text-center col-6 text-nowrap text-truncate" id="paste_info_created_at">-</td>
+              <td class="text-center col-6 scroll-inv" id="paste_info_created_at">-</td>
             </tr>
             <tr>
               <td class="text-center col-3 text-nowrap">Expired</td>
-              <td class="text-center col-6 text-nowrap text-truncate" id="paste_info_expired_at">-</td>
+              <td class="text-center col-6 scroll-inv" id="paste_info_expired_at">-</td>
             </tr>
             </tbody>
           </table>

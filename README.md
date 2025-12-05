@@ -277,49 +277,148 @@ Currently, only the following options is supported for `option`
 
 Delete paste by uuid. *If the password is set, this request requires additional `x-auth-key` header*
 
-### `POST /api/large_upload/create`
+## Paste V2 RESTful API
 
-Generate the presigned URL for upload large paste to the given S3 endpoint `LARGE_ENDPOINT` using HTTP `PUT` request.
+At the start of this project, the service code was designed to allow users to upload text via an HTTP form and display the response in the browser. However, handling form data is troublesome. The new version 2 of the RESTful API is more programmer-friendly and simplifies request validation using [forgjs](https://github.com/oussamahamdaoui/forgJs). The V1 API will continue to remain for creating paste from console.  
 
-#### For `multipart/form-data` request,
+### General Resposne
 
-|Form Key|Description|
-|-|-|
-|`title`|File title|
-|`file-size`|File size|
-|`file-sha256-hash`|File hash (SHA256)|
-|`mime-type`|The media type (MIME) of the data and encoding|
-|`read-limit`|The maximum access count|
-|`pass`|Password|
+#### On success
 
-The `file-size` and `file-sha256sum` field is required.
-
-#### Response
 ```json
 {
-  "uuid": "<new-uuid>",
-  "expiration": <expiration-time>,
-  "file_size": <expected-upload-file-size>,
-  "file_hash": "<expected-upload-file-hash>",
-  "signed_url": "<upload-path>",
-  "required_headers": {
-    "Content-Length": "<expected-upload-file-size>",
-    "x-amz-checksum-sha256": "<expected-upload-file-hash>"
-  }
+  "status_code": <status-code>,
+  "schema-name": { ... object ... }
+}
+```
+`schema-name` is the type name of the response object, specifically `PasteCreateUploadResponse`, `PasteInfo` and `Config`.
+
+#### On error
+
+```json
+{
+  "status_code": <status-code>,
+  "message": "error-text"
 }
 ```
 
-Then, you can upload the file to `signed_url` using `PUT` method with and only with the headers supplied in `required_headers`. You can find reference code to perform the transection in the [frontend code](https://github.com/rikkaneko/paste/blob/2d7ce3f1c435103b7f676b0b325c1e0036afaded/frontend/static/paste.js#L274).
+### `GET /v2/info/<uuid>`
 
-Note that you can only upload the specific file matching the `file-size` and `file-sha256-hash` provided in `/create` request.
+Retrieve paste info
 
-### `POST /api/large_upload/complete/<uuid>`
+### Response
 
-Finialize the paste created from `/api/large_upload/create`.
+A `PasteInfo` object on success.
 
-### `GET /api/large_upload/<uuid>`
+```typescript
+export interface PasteInfo {
+  uuid: string;
+  paste_type: PasteType;
+  title?: string;
+  file_size: number;
+  mime_type?: string;
+  has_password: boolean;
+  // Storage location
+  location?: string;
+  access_n: number;
+  max_access_n?: number;
+  created_at: number;
+  expired_at: number;
+}
+```
 
-Generate the presigned URL for upload large paste to the given S3 endpoint `LARGE_DOWNLOAD_ENDPOINT` using HTTP `GET` request.
+### `POST /v2/info/<uuid>`
+
+If the paste has password, authentication is required via `x-auth-key` headers or query parameters and Bearer authentication.
+
+#### Request
+
+Accept a `PasteInfoUpdateParams` object in `application/json`.
+
+```typescript
+export interface PasteInfoUpdateParams {
+  password?: string;
+  max_access_n?: number;
+  title?: string;
+  mime_type?: string;
+  expired_at?: number;
+}
+```
+
+#### Response
+
+### `POST /v2/create`
+
+Generate the presigned URL for upload large paste to the underlying S3 endpoint.
+
+#### Request
+
+Accept a `PasteCreateParams` object in `application/json`.
+
+```typescript
+export interface PasteCreateParams {
+  password?: string;
+  max_access_n?: number;
+  title?: string;
+  mime_type?: string;
+  file_size: number;
+  // 64 digit SHA256 checksum hex
+  file_hash: string;
+  // Select the storage location for this new upload request
+  location?: string;
+  // Expired time in UNIX timestamp
+  expired_at?: number;
+}
+```
+
+#### Response
+
+A `PasteCreateUploadResponse` object on success.
+
+```typescript
+export interface PasteCreateUploadResponse {
+  uuid: string;
+  expiration: number;
+  upload_url: string;
+  request_headers: {
+    'Content-Length': string;
+    'x-amz-checksum-sha256': string;
+  };
+}
+```
+
+Then, you can upload the file to `upload_url` using `PUT` method **with and only** with the headers supplied in `request_headers`. You can find reference code to perform the transection in the [frontend code](https://github.com/rikkaneko/paste/blob/e391cf1cece044786596fee930b282cd57cae59e/frontend/static/paste.js#L308).
+
+Note that you can only upload the specific file matching the `file_size` and `file_hash` provided in `/v2/create` request.
+
+### `POST /v2/complete/<uuid>`
+
+Finialize the paste created from `/v2/create`.
+
+#### Response
+
+A `PasteInfo` object on success.
+
+### `GET /v2/config`
+> [!WARNING] 
+> Anyone knows the `auth-token` can view/modify the entire runtime config.
+
+Authentication via `x-auth-token` headers or query parameters and Bearer authentication.  
+For security concern, the value of the `access_key_id` and `secret_access_key` for each storage profile is marked.
+
+#### Response
+
+A [Config](#runtime-config-schema) object on success.
+
+### `POST /v2/config`
+> [!WARNING] 
+> Anyone knows the `auth-token` can view/modify the entire runtime config.
+
+Authentication via `x-auth-token` headers or query parameters and Bearer authentication.
+
+#### Request
+
+Accept a [Config](#runtime-config-schema) object in `application/json`.
 
 ## Expiring paste
 
@@ -332,8 +431,4 @@ The Paste API client for the command line interface (CLI), as well as versions f
 
 ## Remark
 
-You are welcome to use my project and depoly your own service.  
-Due to the fact that the `SERVICE_URL` is hard-coded into the `paste.html`,
-you may simply use `Ctrl`+`R` to replace `pb.nekoid.cc` with your own service URL.  
-
-Of course, contribute and report issues are also welcome! \:D
+You are welcome to use my project and depoly your own service. Contribute and report issues are also welcome! \:D

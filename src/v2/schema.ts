@@ -1,5 +1,4 @@
 import { Validator, Rule } from '@cesium133/forgjs';
-import { cors } from 'itty-router';
 
 export enum PasteType {
   paste = 1,
@@ -71,9 +70,12 @@ export interface PasteCreateParams {
   title?: string;
   mime_type?: string;
   file_size: number;
+  // 64 digit SHA256 checksum hex
   file_hash: string;
   // Add in v2.3: support storage location selection
+  // Select the storage location for this new upload request
   location?: string;
+  // Expired time in UNIX timestamp
   expired_at?: number;
 }
 

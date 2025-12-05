@@ -28,13 +28,13 @@
   max-width: 200px;
 }
 
-#paste_info_title {
+.scroll-inv {
   overflow: scroll;
   white-space: nowrap;
   scrollbar-width: none; /* Firefox */
 }
 
-#paste_info_title::-webkit-scrollbar {
+.scroll-inv::-webkit-scrollbar {
   width: 0px;
   height: 0px;
   background: transparent;
