@@ -33,7 +33,7 @@
 <nav class="navbar sticky-top navbar-expand-lg navbar-dark bg-dark" id="navbar">
   <div class="container-fluid">
     <span class="navbar-brand" href="#">
-      <img src="favicon.png" alt="Logo" width="24" height="28" class="d-inline-block align-middle me-1">
+      <img src="favicon.png" alt="Logo" width="24" height="28" class="d-inline-block align-middle me-1" id="pb_icon">
       Paste
     </span>
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar_supported_content"
@@ -142,6 +142,15 @@
       <div class="mb-3">
         <label for="read_limit_input" class="form-label">Read limit</label>
         <input type="number" class="form-control" id="read_limit_input" min="1" name="read-limit">
+      </div>
+
+      <div class="mb-3 d-none" id="location_input_div">
+        <label for="read_limit_input" class="form-label">Location*</label>
+          <select class="form-select" id="location_input" name="location">
+            <option selected>default</option>
+            <option value="large">large</option>
+            <option value="raspberry">raspberry [campaus only]</option>
+          </select>
       </div>
       
       <div class="form-check mb-3">

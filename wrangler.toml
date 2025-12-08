@@ -8,6 +8,7 @@ kv_namespaces = [
 services = [
   { binding = "QRCODE", service = "qrcode-gen" }
 ]
+minify = true
 
 [vars]
 CONFIG_NAME = "config"

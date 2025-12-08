@@ -87,7 +87,7 @@ export interface ConfigParams {
 `access_key_id` and `secret_access_key` is the access credentials to any S3-compatible object storage service or self-hosted S3 API endpoint.
 
 ### Example runtime config
-```json
+```typescript
 {
   "config_auth_token": "auth-token",
   "uuid_length": 4,
@@ -285,17 +285,17 @@ At the start of this project, the service code was designed to allow users to up
 
 #### On success
 
-```json
+```typescript
 {
   "status_code": <status-code>,
-  "schema-name": { ... object ... }
+  "schema-name": { ... }
 }
 ```
 `schema-name` is the type name of the response object, specifically `PasteCreateUploadResponse`, `PasteInfo` and `Config`.
 
 #### On error
 
-```json
+```typescript
 {
   "status_code": <status-code>,
   "message": "error-text"

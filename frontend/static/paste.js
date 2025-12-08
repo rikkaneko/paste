@@ -195,6 +195,18 @@ $(function () {
   let go_id = $('#go_paste_id');
   let view_btn = $('#view_info_button');
   let show_qrcode_checkbox = $('#show_qrcode_checkbox');
+  let pb_icon = $('#pb_icon');
+  let click_count = 0;
+
+  pb_icon.on('click', function () {
+    if (click_count >= 3) {
+      $('#location_input_div').removeClass('d-none');
+      show_pop_alert('Activated developer settings!', 'alert-secondary');
+      setTimeout(() => remove_pop_alert(), 2000);
+    } else {
+      click_count++;
+    }
+  });
 
   // Enable bootstrap tooltips
   const tooltip_trigger_list = [].slice.call($('[data-bs-toggle="tooltip"]'));
@@ -269,6 +281,7 @@ $(function () {
     const type = formdata.get('paste-type');
     /** @type {File} */
     const content = formdata.get('u');
+    const location = formdata.get('location');
 
     inputs[type].trigger('input');
     if (inputs[type].hasClass('is-invalid') || !(!!content?.size || !!content?.length)) {
@@ -286,7 +299,7 @@ $(function () {
     upload_button.text('Waiting...');
 
     // Hanlde large paste (> 10MB)
-    if (content.size > 10485760) {
+    if (content.size > 10485760 || (location && location !== 'default')) {
       const file_hash = await get_file_hash(content);
       const params = {
         title: content.name,
@@ -295,6 +308,7 @@ $(function () {
         'mime-type': content.type || undefined,
         'read-limit': formdata.get('read-limit') || undefined,
         pass: formdata.get('auth-key') || undefined,
+        location: location || undefined,
       };
 
       // Remove empty entries
@@ -343,7 +357,10 @@ $(function () {
         });
         if (res2.ok) {
           build_paste_modal(uuid, show_qrcode);
-          show_pop_alert(`Paste #${uuid} created!`, 'alert-success');
+          show_pop_alert(
+            `Paste #<a href="#" onclick="build_paste_modal('${uuid}', true, false)">${uuid}</a> created!`,
+            'alert-success'
+          );
           pass_input.val('');
         } else {
           const error = await res2.json();
@@ -380,7 +397,10 @@ $(function () {
         if (res.ok) {
           const paste_info = await res.json();
           build_paste_modal(paste_info.uuid, show_qrcode, true);
-          show_pop_alert(`Paste #${paste_info.uuid} created!`, 'alert-success');
+          show_pop_alert(
+            `Paste #<a href="#" onclick="build_paste_modal('${uuid}', true, false)">${uuid}</a> created!`,
+            'alert-success'
+          );
           pass_input.val('');
         } else {
           throw new Error(`Unable to upload paste: ${(await res.text()) || `${res.status} ${res.statusText}`}`);
@@ -424,17 +444,7 @@ $(function () {
       return;
     }
 
-    try {
-      const res = await fetch(`${ENDPOINT}/${uuid}/settings?${new URLSearchParams({ json: '1' })}`);
-      if (res.ok) {
-        build_paste_modal(uuid, show_qrcode, false, true);
-      } else {
-        show_pop_alert('Invalid Paste ID.', 'alert-warning');
-      }
-    } catch (err) {
-      console.log('error', err);
-      show_pop_alert(err.message, 'alert-danger');
-    }
+    build_paste_modal(uuid, show_qrcode, false, true);
   });
 
   paste_modal.id_copy_btn.on('click', async function () {
