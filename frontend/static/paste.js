@@ -301,21 +301,6 @@ $(function () {
     // Hanlde large paste (> 10MB)
     if (content.size > 10485760 || (location && location !== 'default')) {
       const file_hash = await get_file_hash(content);
-      const params = {
-        title: content.name,
-        'file-size': content.size,
-        'file-sha256-hash': file_hash,
-        'mime-type': content.type || undefined,
-        'read-limit': formdata.get('read-limit') || undefined,
-        pass: formdata.get('auth-key') || undefined,
-        location: location || undefined,
-      };
-
-      // Remove empty entries
-      const filtered = new FormData();
-      Object.entries(params).forEach(([key, val]) => {
-        if (val) filtered.set(key, val);
-      });
 
       try {
         // Retrieve presigned URL for upload large paste
@@ -331,6 +316,7 @@ $(function () {
             file_hash: file_hash,
             password: formdata.get('auth-key') || undefined,
             max_access_n: formdata.get('read-limit') || undefined,
+            location: location || undefined,
           }),
         });
 
