@@ -396,7 +396,8 @@ $(function () {
 
         if (res.ok) {
           const paste_info = await res.json();
-          build_paste_modal(paste_info.uuid, show_qrcode, true);
+          const uuid = paste_info.uuid;
+          build_paste_modal(uuid, show_qrcode, true);
           show_pop_alert(
             `Paste #<a href="#" onclick="build_paste_modal('${uuid}', true, false)">${uuid}</a> created!`,
             'alert-success'
