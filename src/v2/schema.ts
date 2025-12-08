@@ -232,6 +232,7 @@ export class PasteAPIRepsonse {
       has_password: descriptor.password !== undefined,
       access_n: descriptor.access_n,
       max_access_n: descriptor.max_access_n,
+      location: descriptor.location,
       created_at: descriptor.created_at,
       expired_at: descriptor.expired_at,
     };

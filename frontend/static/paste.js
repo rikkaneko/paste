@@ -120,6 +120,8 @@ async function build_paste_modal(uuid, show_qrcode = true, saved = true, one_tim
   if (cached_paste_info) paste_modal.forget_btn.removeClass('d-none');
   else paste_modal.forget_btn.addClass('d-none');
 
+  $('#paste_info_location').text('-');
+
   Object.entries(paste_info).forEach(([key, val]) => {
     switch (key) {
       case 'paste_type':
@@ -201,6 +203,7 @@ $(function () {
   pb_icon.on('click', function () {
     if (click_count >= 3) {
       $('#location_input_div').removeClass('d-none');
+      $('#paste_info_location_row').removeClass('d-none');
       show_pop_alert('Activated developer settings!', 'alert-secondary');
       setTimeout(() => remove_pop_alert(), 2000);
     } else {
