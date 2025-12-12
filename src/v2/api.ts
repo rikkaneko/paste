@@ -135,7 +135,7 @@ router.post('/create', async (req, env, ctx) => {
 
   const config = Config.get();
   // Default to `large` storage if not specified
-  const location = params.location ?? 'large';
+  const location = params.location ?? 'default';
   const storage = config.filter_storage(location);
   if (!storage) {
     return PasteAPIRepsonse.build(400, 'Invalid location.');

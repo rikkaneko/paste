@@ -23,10 +23,10 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width initial-scale=1 shrink-to-fit=1">
   <link rel="icon" href="favicon.png" sizes="any" type="image/png;">
-  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.css" rel="stylesheet">
-  <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css" rel="stylesheet">
-  <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.9.1/font/bootstrap-icons.min.css"
-        rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.css" integrity="sha512-5A8nwdMOWrSz20fDsjczgUidUBR8liPYU+WymTZP1lmY9G6Oc7HlZv156XqnsgNUzTyMefFTcsFH/tnJE/+xBg==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.8/css/bootstrap.min.css" integrity="sha512-2bBQCjcnw658Lho4nlXJcc6WkV/UxpE/sAokbXPxQNGqmNdQrWqtw26Ns9kFF/yG792pKR1Sx8/Y1Lf1XN4GKA==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.13.1/font/bootstrap-icons.min.css" integrity="sha512-t7Few9xlddEmgd3oKZQahkNI4dS6l80+eGEzFQiqtyVYdvcSG2D3Iub77R20BdotfRPA9caaRkg1tyaJiPmO0g==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/gijgo/1.9.14/combined/css/gijgo.min.css" integrity="sha512-9aomOZ/zmsiod+U3sukisKwsGHSlhezpxtRx7LFNEdvqnnVi7/tKgAS0v4kbH0pqY1UNs4BgYwTkRUDtLWk5Kw==" crossorigin="anonymous" referrerpolicy="no-referrer" />
   <link href="static/paste.css" rel="stylesheet">
 </head>
 <body>
@@ -140,14 +140,20 @@
       </div>
       
       <div class="mb-3">
-        <label for="read_limit_input" class="form-label">Read limit</label>
+        <label for="read_limit_input" class="form-label">Max Access Times</label>
         <input type="number" class="form-control" id="read_limit_input" min="1" name="read-limit">
       </div>
 
-      <div class="mb-3 d-none" id="location_input_div">
-        <label for="read_limit_input" class="form-label">Location*</label>
+      <div class="mb-3 dev-mode d-none">
+        <label for="expiration_date_input" class="form-label">Expiration Date</label>
+        <input class="form-control" type="text" id="expiration_date_input" name="expiration_date">
+      </div>
+
+      <div class="mb-3 dev-mode d-none" id="location_input_div">
+        <label for="location_input" class="form-label">Location</label>
           <select class="form-select" id="location_input" name="location">
-            <option selected>default</option>
+            <option selected></option>
+            <option value="default">default</option>
             <option value="large">large</option>
             <option value="raspberry">raspberry [campaus only]</option>
           </select>
@@ -192,7 +198,7 @@
             This service is primarily designed for own usage and interest only.<br>
             All data may be deleted or expired without any notification and guarantee. Please <b>DO NOT</b> abuse this
             service.
-            The limit for file upload is <b>250 MB</b> and the paste will be kept for <b>28 days</b> only by default.<br>
+            The limit for file upload is <b>10 MB</b> and the paste will be kept for <b>28 days</b> only.<br>
             The source code is available in my GitHub repository <a
               href="https://github.com/rikkaneko/paste">[here]</a>.<br>
             This webpage is designed for upload files only.
@@ -258,7 +264,7 @@
               <td class="text-center col-3 text-nowrap">Access Times</td>
               <td class="text-center col-6"><span id="paste_info_access_n">-</span><span id="paste_info_access_separator"> / </span><span id="paste_info_max_access_n"></span></td>
             </tr>
-            <tr id="paste_info_location_row" class="d-none">
+            <tr id="paste_info_location_row" class="dev-mode d-none">
               <td class="text-center col-3 text-nowrap">Location</td>
               <td class="text-center col-6"><span id="paste_info_location">-</span></td>
             </tr>
@@ -286,10 +292,11 @@
   </div>
 </div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.1/jquery.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/2.11.6/umd/popper.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/js/bootstrap.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.2.0/crypto-js.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js" integrity="sha512-v2CJ7UaYy4JwqLDIrZUI/4hqeoQieOmAZNXBeQyjo21dadnwR+8ZaIJVT8EE2iyI61OV8e6M8PP2/4hpQINQ/g==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/2.11.8/umd/popper.min.js" integrity="sha512-TPh2Oxlg1zp+kz3nFA0C5vVC6leG/6mm1z9+mA81MI5eaUVqasPLO8Cuk4gMF4gUfP5etR73rgU/8PNMsSesoQ==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.8/js/bootstrap.min.js" integrity="sha512-nKXmKvJyiGQy343jatQlzDprflyB5c+tKCzGP3Uq67v+lmzfnZUi/ZT+fc6ITZfSC5HhaBKUIvr/nTLCV+7F+Q==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.2.0/crypto-js.min.js" integrity="sha512-a+SUDuwNzXDvz4XrIcXHuCf089/iJAoN4lmrXJg18XnduKK6YlDHNRalv4yd1N40OKI80tFidF+rqTFKGPoWFQ==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gijgo/1.9.14/combined/js/gijgo.min.js" integrity="sha512-JsHMa3rSDTAy7MZCj1DWbL0YwAAysj23aWwCOTWKs3tlqO3ptwDhw3OHimYoeqryhTmSLFRn29C8qHK/oT/iZA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <script src="static/paste.js"></script>
 </body>
 </html>

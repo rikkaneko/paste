@@ -121,6 +121,7 @@ async function build_paste_modal(uuid, show_qrcode = true, saved = true, one_tim
   else paste_modal.forget_btn.addClass('d-none');
 
   $('#paste_info_location').text('-');
+  $('#paste_info_title').text('-');
 
   Object.entries(paste_info).forEach(([key, val]) => {
     switch (key) {
@@ -169,6 +170,11 @@ async function get_file_hash(file) {
   return file_hash;
 }
 
+// Check if date valid
+function isDateValid(datetimeStr) {
+  return !isNaN(new Date(datetimeStr));
+}
+
 $(function () {
   input_div.file = $('#file_upload_layout');
   input_div.text = $('#text_input_layout');
@@ -199,11 +205,18 @@ $(function () {
   let show_qrcode_checkbox = $('#show_qrcode_checkbox');
   let pb_icon = $('#pb_icon');
   let click_count = 0;
+  let expiration_date_picker = $('#expiration_date_input');
+
+  expiration_date_picker.datetimepicker({
+    uiLibrary: 'bootstrap5',
+    mode: '24hr',
+    format: 'yyyy-mm-dd HH:MM',
+    footer: true,
+  });
 
   pb_icon.on('click', function () {
     if (click_count >= 3) {
-      $('#location_input_div').removeClass('d-none');
-      $('#paste_info_location_row').removeClass('d-none');
+      $('.dev-mode').removeClass('d-none');
       show_pop_alert('Activated developer settings!', 'alert-secondary');
       setTimeout(() => remove_pop_alert(), 2000);
     } else {
@@ -213,7 +226,7 @@ $(function () {
 
   // Enable bootstrap tooltips
   const tooltip_trigger_list = [].slice.call($('[data-bs-toggle="tooltip"]'));
-  const tooltip_list = tooltip_trigger_list.map(function (e) {
+  tooltip_trigger_list.map(function (e) {
     return new bootstrap.Tooltip(e);
   });
 
@@ -224,24 +237,37 @@ $(function () {
     console.log('Restored cache paste');
   }
 
-  inputs.file.on('change', function () {
-    inputs.file.removeClass('is-invalid');
-    file_stat.removeClass('text-danger');
-    if (this.files[0] === undefined) {
+  let selected_file;
+
+  function update_file_stats() {
+    if (selected_file === undefined) {
       file_stat.textContent = '0 bytes';
       return;
     }
-    let bytes = this.files[0]?.size ?? 0;
-    let size = bytes + ' bytes';
-    title.val(this.files[0]?.name || '');
-    file_stat.text(`${this.files[0]?.type || 'application/octet-stream'}, ${to_human_readable_size(size)}`);
+    let bytes = selected_file?.size ?? 0;
+    title.val(selected_file?.name || '');
+    file_stat.text(`${selected_file?.type || 'application/octet-stream'}, ${to_human_readable_size(bytes)}`);
 
-    // Check length <= 1GiB
-    if (bytes > 1073741824) {
+    // Check length <= 10MB only when not default location
+    const form = $('#upload_form')[0];
+    let formdata = new FormData(form);
+    const location = formdata.get('location');
+    inputs.file.removeClass('is-invalid');
+    file_stat.removeClass('text-danger');
+    if ((!location || location === 'default') && bytes > 10485760) {
       inputs.file.addClass('is-invalid');
       file_stat.addClass('text-danger');
       file_stat.text('The uploaded file is larger than the maximum file limit.');
     }
+  }
+
+  inputs.file.on('change', function () {
+    selected_file = this.files[0];
+    update_file_stats();
+  });
+
+  $('#location_input').on('change', function () {
+    update_file_stats();
   });
 
   inputs.text.on('input', function () {
@@ -285,6 +311,27 @@ $(function () {
     /** @type {File} */
     const content = formdata.get('u');
     const location = formdata.get('location');
+    const expiration_date_val = formdata.get('expired_date');
+
+    // Validate expiration date
+    if (expiration_date_val) {
+      if (isDateValid(expiration_date_val)) {
+        show_pop_alert('Invalid expiration date', 'alert-danger');
+        return false;
+      }
+      const minDate = new Date();
+      const maxDate = new Date(minDate);
+      maxDate.setDate(maxDate.getDate() + 28);
+      const expiration = new Date(expiration_date_val);
+      if (expiration < minDate) {
+        show_pop_alert('Expiration date cannot be earier than the current time', 'alert-danger');
+        return false;
+      }
+      if (expiration > maxDate) {
+        show_pop_alert('Expiration date cannot be later than 28 days after', 'alert-danger');
+        return false;
+      }
+    }
 
     inputs[type].trigger('input');
     if (inputs[type].hasClass('is-invalid') || !(!!content?.size || !!content?.length)) {
@@ -320,6 +367,7 @@ $(function () {
             password: formdata.get('auth-key') || undefined,
             max_access_n: formdata.get('read-limit') || undefined,
             location: location || undefined,
+            expired_at: expiration_date_val ? new Date(expiration_date_val) : undefined,
           }),
         });
 
