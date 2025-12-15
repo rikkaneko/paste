@@ -58,13 +58,14 @@ function validate_url(path) {
   return url.protocol === 'http:' || url.protocol === 'https:';
 }
 
-function show_pop_alert(message, alert_type = 'alert-primary', add_classes = null) {
+function show_pop_alert(message, alert_type = 'alert-primary', add_classes, title) {
   remove_pop_alert();
   $('#alert-container').prepend(
     jQuery.parseHTML(
       `<div class="alert ${alert_type} alert-dismissible position-absolute fade show top-0 start-50 translate-middle-x" 
             style="margin-top: 30px; max-width: 500px; width: 80%" id="pop_alert" role="alert"> \
-      <div>${message}</div> \
+      ${title ? `<h5>${title}</h5>` : ''}
+      <span>${message}</p> \
       <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button> \
       </div>`
     )
@@ -349,7 +350,7 @@ $(function () {
     upload_button.text('Waiting...');
 
     // Hanlde large paste (> 10MB)
-    if (content.size > 10485760 || (location && location !== 'default')) {
+    if (content.size > 10485760 || location) {
       const file_hash = await get_file_hash(content);
 
       try {
@@ -385,7 +386,9 @@ $(function () {
         });
 
         if (!res1.ok) {
-          throw new Error(`Unable to upload paste: ${(await res1.text()) || `${res1.status} ${res1.statusText}`}`);
+          const error_text = (await res1.text()) || `${res1.status} ${res1.statusText}`;
+          show_pop_alert(error_text, 'alert-danger', '', 'Unable to upload paste');
+          throw new Error(`Unable to upload paste: ${error_text}`);
         }
         // Finialize the paste
         const uuid = response.PasteCreateUploadResponse.uuid;
@@ -401,11 +404,11 @@ $(function () {
           pass_input.val('');
         } else {
           const error = await res2.json();
+          show_pop_alert(`${res.status} ${error.message}`, 'alert-danger', '', 'Unable to finialize paste');
           throw new Error(`Unable to finialize paste: ${res.status} ${error.message}`);
         }
       } catch (err) {
         console.log('error', err);
-        show_pop_alert(err.message, 'alert-danger');
       }
     } else {
       // Handle normal paste (<= 25MB)

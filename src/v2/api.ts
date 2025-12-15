@@ -143,7 +143,21 @@ router.post('/create', async (req, env, ctx) => {
 
   // Create paste logic
   if (params.file_size > storage.max_file_size) {
-    return PasteAPIRepsonse.build(422, `Paste size must be under ${to_human_readable_size(storage.max_file_size)}\n`);
+    return PasteAPIRepsonse.build(422, `Paste size must be under ${to_human_readable_size(storage.max_file_size)}`);
+  }
+
+  const now = Date.now();
+  // Expiration time default to 7 days if not specified
+  let expiration = new Date(now + 604800 * 1000).getTime();
+  // Maximum valid time default to 28 days
+  let max_valid_ttl = storage.max_valid_ttl ?? new Date(now + 2419200 * 1000).getTime();
+  if (params.expired_at && params.expired_at <= max_valid_ttl) {
+    expiration = params.expired_at;
+  } else {
+    return PasteAPIRepsonse.build(
+      422,
+      `Expiration time cannot not later than ${new Date(max_valid_ttl).toISOString()}`
+    );
   }
 
   const uuid = gen_id();
@@ -160,7 +174,7 @@ router.post('/create', async (req, env, ctx) => {
 
   const current_time = Date.now();
   // Temporary expiration time
-  const expiration = new Date(current_time + 900 * 1000).getTime();
+  const temp_expiration = new Date(current_time + 900 * 1000).getTime();
   const encoded_hash = hexToBase64(params.file_hash);
   if (!encoded_hash) {
     return PasteAPIRepsonse.build(400, 'Invalid SHA256 hex.');
@@ -189,7 +203,7 @@ router.post('/create', async (req, env, ctx) => {
 
   const result: PasteCreateUploadResponse = {
     uuid,
-    expiration,
+    expiration: temp_expiration,
     upload_url: signed_url,
     request_headers: required_headers,
   };
@@ -204,11 +218,11 @@ router.post('/create', async (req, env, ctx) => {
     paste_type: PasteType.large_paste,
     file_size: params.file_size,
     created_at: current_time,
-    expired_at: expiration,
+    expired_at: temp_expiration,
     location: location,
     upload_track: {
       pending_upload: true,
-      saved_expired_at: params.expired_at,
+      saved_expired_at: expiration,
     },
   };
 
@@ -283,11 +297,15 @@ router.post('/complete/:uuid', async (req, env, ctx) => {
     return PasteAPIRepsonse.build(500, 'Internal server error.');
   }
 
-  descriptor.expired_at = descriptor.expired_at =
-    descriptor.upload_track?.saved_expired_at ?? new Date(descriptor.created_at + 2419200 * 1000).getTime(); // default 28 days;
+  // Expiration time default to 7 days if not specified
+  const expiration =
+    descriptor.upload_track?.saved_expired_at ?? new Date(descriptor.created_at + 60480 * 1000).getTime();
+  descriptor.expired_at = expiration;
   // Remove unneeded propty
   delete descriptor.upload_track;
-  ctx.waitUntil(env.PASTE_INDEX.put(uuid, JSON.stringify(descriptor), { expirationTtl: 2419200 }));
+  ctx.waitUntil(
+    env.PASTE_INDEX.put(uuid, JSON.stringify(descriptor), { expirationTtl: (expiration - Date.now()) / 1000 })
+  );
 
   return PasteAPIRepsonse.info(descriptor);
 });

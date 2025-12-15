@@ -297,7 +297,7 @@ router.post('/', async (request, env, ctx) => {
     // Upload success
     const current_time = Date.now();
     // Temporary expiration time
-    const expiration = new Date(Date.now() + 2419200 * 1000).getTime(); // default 28 days
+    const expiration = new Date(Date.now() + 604800 * 1000).getTime(); // default 28 days
     const descriptor: PasteIndexEntry = {
       uuid,
       title: title || undefined,
@@ -312,7 +312,7 @@ router.post('/', async (request, env, ctx) => {
     };
 
     // Key will be expired after 28 day if unmodified
-    ctx.waitUntil(env.PASTE_INDEX.put(uuid, JSON.stringify(descriptor), { expirationTtl: 2419200 }));
+    ctx.waitUntil(env.PASTE_INDEX.put(uuid, JSON.stringify(descriptor), { expirationTtl: 604800 }));
     return await get_paste_info(uuid, descriptor, request.is_browser, need_qrcode, reply_json);
   } else {
     return new Response('Unable to upload the paste.\n', {

@@ -91,7 +91,7 @@ const param_rules = {
     type: 'int',
     optional: true,
     min: Date.now(),
-    max: new Date(Date.now() + 2419200 * 1000).getTime(), // max. 28 days
+    // max: new Date(Date.now() + 2419200 * 1000).getTime(), // max. 28 days
   }),
 };
 
@@ -117,6 +117,8 @@ export interface StorageConfigParams {
   secret_access_key: string;
   // Maximum acceptable file size for this endpoint
   max_file_size: number;
+  // Maximum time paste can remain valid in this endpoint (Default to 28 days if not specified)
+  max_valid_ttl?: number;
 }
 
 export interface ConfigParams {
@@ -145,6 +147,7 @@ const storage_config_rules = {
   access_key_id: new Rule({ type: 'string', notEmpty: true }),
   secret_access_key: new Rule({ type: 'string', notEmpty: true }),
   max_file_size: new Rule({ type: 'int' }),
+  max_valid_ttl: new Rule({ type: 'int', optional: true }),
 };
 
 export const StorageConfigParamsValidator = new Validator(storage_config_rules);
