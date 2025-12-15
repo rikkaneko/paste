@@ -65,7 +65,7 @@ function show_pop_alert(message, alert_type = 'alert-primary', add_classes, titl
       `<div class="alert ${alert_type} alert-dismissible position-absolute fade show top-0 start-50 translate-middle-x" 
             style="margin-top: 30px; max-width: 500px; width: 80%" id="pop_alert" role="alert"> \
       ${title ? `<h5>${title}</h5>` : ''}
-      <span>${message}</p> \
+      <span>${message}</span>
       <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button> \
       </div>`
     )
@@ -370,10 +370,11 @@ $(function () {
             location: location || undefined,
             expired_at: expiration_date_val ? new Date(expiration_date_val) : undefined,
           }),
-        });
+        }).catch();
 
         if (!res.ok) {
           const error = await res.json();
+          show_pop_alert(`${res.status} ${error.message}`, 'alert-danger', '', 'Unable to create paste');
           throw new Error(`Unable to create paste: ${res.status} ${error.message}`);
         }
         // Upload the paste to the endpoint
