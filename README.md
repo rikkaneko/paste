@@ -15,12 +15,10 @@ Please **DO NOT** abuse this service.
 - [x] Upload paste
 - [x] Download paste
 - [x] Delete paste
-- [ ] Update existing paste
 - [x] Password protection (support [HTTP Basic authentication](https://en.wikipedia.org/wiki/Basic_access_authentication) and `x-auth-key` header)
 - [x] Limit access times
 - [x] View paste in browsers (only for text and media file)
-- [ ] Expiring paste (*not support directly, see [this section](#expiring-paste)*)
-- [ ] Render paste code with syntax highlighting
+- [x] Expiring paste (*not support directly, see [this section](#expiring-paste)*)
 - [x] Generate QR code for paste link
 - [x] Support URL redirection using [HTTP status codes 301](https://en.wikipedia.org/wiki/URL_redirection#HTTP_status_codes_3xx)
 - [x] Runtime config
@@ -66,6 +64,8 @@ export interface StorageConfigParams {
   secret_access_key: string;
   // Maximum acceptable file size for this endpoint
   max_file_size: number;
+  // Maximum time paste can remain valid in this endpoint (Default to 28 days if not specified)
+  max_valid_ttl?: number;
 }
 
 export interface ConfigParams {

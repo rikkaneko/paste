@@ -148,16 +148,19 @@ router.post('/create', async (req, env, ctx) => {
 
   const now = Date.now();
   // Expiration time default to 7 days if not specified
-  let expiration = new Date(now + 604800 * 1000).getTime();
-  // Maximum valid time default to 28 days
-  let max_valid_ttl = storage.max_valid_ttl ?? new Date(now + 2419200 * 1000).getTime();
-  if (params.expired_at && params.expired_at <= max_valid_ttl) {
-    expiration = params.expired_at;
-  } else {
-    return PasteAPIRepsonse.build(
-      422,
-      `Expiration time cannot not later than ${new Date(max_valid_ttl).toISOString()}`
-    );
+  let expiration = now + 604800 * 1000;
+
+  if (params.expired_at) {
+    // Maximum valid time default to 28 days
+    let max_valid_ttl = now + (storage.max_valid_ttl ?? 2419200) * 1000;
+    if (params.expired_at <= max_valid_ttl) {
+      expiration = params.expired_at;
+    } else {
+      return PasteAPIRepsonse.build(
+        422,
+        `Expiration time cannot not later than ${new Date(max_valid_ttl).toISOString()}`
+      );
+    }
   }
 
   const uuid = gen_id();
