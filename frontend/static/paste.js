@@ -48,6 +48,11 @@ let cached_paste_info = null;
 let show_saved_btn = null;
 let show_qrcode = true;
 
+/**
+ * Validate URL
+ * @param {string} path URL
+ * @returns {boolean}
+ */
 function validate_url(path) {
   let url;
   try {
@@ -58,11 +63,18 @@ function validate_url(path) {
   return url.protocol === 'http:' || url.protocol === 'https:';
 }
 
+/**
+ * Make pop alert
+ * @param {string} message Plain text or HTML code to be displayed
+ * @param {string} alert_type Bootstrap alert type (Refer to https://getbootstrap.com/docs/5.3/components/alerts/)
+ * @param {string} add_classes One or more space-separated classes to be added to the class attribute of each matched element.
+ * @param {string} title Alert title
+ */
 function show_pop_alert(message, alert_type = 'alert-primary', add_classes, title) {
   remove_pop_alert();
   $('#alert-container').prepend(
     jQuery.parseHTML(
-      `<div class="alert ${alert_type} alert-dismissible position-absolute fade show top-0 start-50 translate-middle-x" 
+      `<div class="alert ${alert_type} alert-dismissible position-absolute fade show top-0 start-50 translate-middle-x shadow p-3 mb-5 rounded" 
             style="margin-top: 30px; max-width: 500px; width: 80%" id="pop_alert" role="alert"> \
       ${title ? `<h5>${title}</h5>` : ''}
       <span>${message}</span>
@@ -76,11 +88,22 @@ function show_pop_alert(message, alert_type = 'alert-primary', add_classes, titl
   window.scrollTo(0, 0);
 }
 
+/**
+ * Remove the current pop alert
+ */
 function remove_pop_alert() {
   const alert = $('#pop_alert');
   if (alert.length) alert.remove();
 }
 
+/**
+ * Build paste modal
+ * @param {string} uuid Paste UUID
+ * @param {boolean} show_qrcode Whether to display the QR Code to the paste
+ * @param {boolean} saved Whether to cache the Paste UUID to local storage
+ * @param {boolean} one_time_only Whether to disable the `Forget` button in the modal
+ * @param {boolean} build_only Whether to show the modal
+ */
 async function build_paste_modal(uuid, show_qrcode = true, saved = true, one_time_only = false, build_only = false) {
   let tooltip = bootstrap.Tooltip.getInstance(paste_modal.id_copy_btn);
   // Fetch paste info
@@ -162,18 +185,112 @@ async function build_paste_modal(uuid, show_qrcode = true, saved = true, one_tim
 }
 
 /**
- * @param file {File}
- * @returns {str}
+ * Computes file hash
+ * @param {File} file File object to be hashed
+ * @param {(offset: number, file_size: number) => void} process_cb Progressing callback
+ * @param {string} algo Hashing algorithm to use
+ * @param {number} chunk_size Size of each chunk in bytes. Defaults to 10 MiB.
+ * @returns {Promise<string>}
  */
-async function get_file_hash(file) {
-  const word_arr = CryptoJS.lib.WordArray.create(await file.arrayBuffer());
-  const file_hash = CryptoJS.SHA256(word_arr).toString(CryptoJS.enc.Hex);
-  return file_hash;
+async function get_file_hash(file, process_cb = null, algo = 'SHA256', chunk_size = 10 * 1024 * 1024) {
+  return new Promise((resolve, reject) => {
+    const fileSize = file.size;
+    let offset = 0;
+    // Initialize the hasher based on the specified algorithm.
+    // CryptoJS algorithms are accessed via static methods like CryptoJS.algo.SHA256.create().
+    const HasherClass = CryptoJS.algo[algo];
+    if (!HasherClass) {
+      reject(new Error(`Unsupported algorithm: ${algo}`));
+      return;
+    }
+    let hasher = HasherClass.create();
+
+    const processChunk = () => {
+      // Run custom callback
+      process_cb(offset, fileSize);
+      if (offset >= fileSize) {
+        // All chunks processed, finalize the hash.
+        try {
+          const hashResult = hasher.finalize();
+          resolve(hashResult.toString());
+        } catch (e) {
+          reject(e);
+        }
+        return;
+      }
+      // Calculate the end position for the current slice.
+      const end = Math.min(offset + chunk_size, fileSize);
+      // Create a new FileReader instance for each chunk to avoid state issues.
+      const reader = new FileReader();
+      // Define the onload event handler for the current chunk read operation.
+      reader.onload = function (e) {
+        try {
+          // Get the raw binary data from the result ArrayBuffer.
+          const chunkArrayBuffer = e.target.result;
+          // Convert the ArrayBuffer chunk into a WordArray, which CryptoJS uses internally.
+          // This is the most efficient way to pass raw binary data to CryptoJS.
+          const wordArrayChunk = CryptoJS.lib.WordArray.create(chunkArrayBuffer);
+          // Update the hasher's internal state with the current chunk.
+          hasher.update(wordArrayChunk);
+          // Update the offset for the next chunk.
+          offset = end;
+          // Process the next chunk asynchronously to keep the UI responsive.
+          setTimeout(processChunk, 0);
+        } catch (error) {
+          reject(error);
+        }
+      };
+      // Define the onerror event handler for the FileReader.
+      reader.onerror = () => {
+        reject(new Error('Error reading file chunk'));
+      };
+      // Slice the file blob for the current chunk and start reading it.
+      const chunkBlob = file.slice(offset, end);
+      reader.readAsArrayBuffer(chunkBlob);
+    };
+    // Start processing the first chunk.
+    processChunk();
+  });
 }
 
-// Check if date valid
+/**
+ * Check if date string valid
+ *
+ * @param {string} datetimeStr
+ * @returns {boolean}
+ */
 function isDateValid(datetimeStr) {
   return !isNaN(new Date(datetimeStr));
+}
+
+/**
+ * Represent bytes in human readable format
+ *
+ * @param {number} bytes File size in bytes
+ * @returns {string}
+ */
+function to_human_readable_size(bytes) {
+  let size = bytes + ' bytes';
+  const units = ['KiB', 'MiB', 'GiB', 'TiB'];
+  for (let i = 0, approx = bytes / 1024; approx > 1; approx /= 1024, i++) {
+    size = approx.toFixed(3) + ' ' + units[i];
+  }
+  return size;
+}
+
+function select_input_type(name) {
+  Object.keys(input_div).forEach((key) => {
+    input_div[key].collapse('hide');
+    inputs[key].prop('disabled', true);
+  });
+  input_div[name].collapse('show');
+  inputs[name].prop('disabled', false);
+  inputs[name].prop('required', true);
+}
+
+function PasteTypeStr(p) {
+  if (p <= 0 || p >= 4) return 'unknown';
+  return ['paste', 'link', 'large_paste'].at(p - 1);
 }
 
 $(function () {
@@ -351,7 +468,9 @@ $(function () {
 
     // Hanlde large paste (> 10MB)
     if (content.size > 10485760 || location) {
-      const file_hash = await get_file_hash(content);
+      const file_hash = await get_file_hash(content, (offset, file_size) => {
+        upload_button.text(`Processing ... ${((offset / file_size) * 100).toFixed(0)}%`);
+      });
 
       try {
         // Retrieve presigned URL for upload large paste
@@ -526,27 +645,3 @@ $(function () {
     show_qrcode = show_qrcode_checkbox.prop('checked');
   });
 });
-
-function select_input_type(name) {
-  Object.keys(input_div).forEach((key) => {
-    input_div[key].collapse('hide');
-    inputs[key].prop('disabled', true);
-  });
-  input_div[name].collapse('show');
-  inputs[name].prop('disabled', false);
-  inputs[name].prop('required', true);
-}
-
-function PasteTypeStr(p) {
-  if (p <= 0 || p >= 4) return 'unknown';
-  return ['paste', 'link', 'large_paste'].at(p - 1);
-}
-
-function to_human_readable_size(bytes) {
-  let size = bytes + ' bytes';
-  const units = ['KiB', 'MiB', 'GiB', 'TiB'];
-  for (let i = 0, approx = bytes / 1024; approx > 1; approx /= 1024, i++) {
-    size = approx.toFixed(3) + ' ' + units[i];
-  }
-  return size;
-}
