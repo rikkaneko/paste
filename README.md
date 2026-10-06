@@ -23,6 +23,7 @@ Please **DO NOT** abuse this service.
 - [x] Support URL redirection using [HTTP status codes 301](https://en.wikipedia.org/wiki/URL_redirection#HTTP_status_codes_3xx)
 - [x] Runtime config
 - [x] Multiple storage locations
+- [x] Support V2 token authentication
 
 ## Service architecture
 
@@ -403,8 +404,9 @@ A `PasteInfo` object on success.
 > [!WARNING] 
 > Anyone knows the `auth-token` can view/modify the entire runtime config.
 
-Authentication via `x-auth-token` headers or query parameters and Bearer authentication.  
 For security concern, the value of the `access_key_id` and `secret_access_key` for each storage profile is marked.
+
+Support Bearer authentication only.  
 
 #### Response
 
@@ -414,11 +416,38 @@ A [Config](#runtime-config-schema) object on success.
 > [!WARNING] 
 > Anyone knows the `auth-token` can view/modify the entire runtime config.
 
-Authentication via `x-auth-token` headers or query parameters and Bearer authentication.
+Support Bearer authentication only.  
+
+#### Required Scopes
+Static admin token *OR* V2 token with `paste.storage.list` scope
 
 #### Request
 
 Accept a [Config](#runtime-config-schema) object in `application/json`.
+
+### `GET /v2/storage`
+
+List available storages.
+
+Protected entities is filtered from unauthenticated user.
+
+Support Bearer authentication only.
+
+#### Required Scopes
+Static admin token *OR* V2 token with `paste.storage.list` scope
+
+#### Response
+
+An array of stripped `Storage` objects on success.
+
+```typescript
+export interface Storage {
+  name: string;
+  max_file_size: number;
+  max_valid_ttl: number;
+  protected?: boolean
+}
+```
 
 ## Expiring paste
 

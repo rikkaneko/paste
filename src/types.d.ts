@@ -4,6 +4,10 @@ export type ERequest = {
   is_browser: boolean;
   origin?: string;
   // match_etag?: string;
+  // V2 token
+  auth?: {
+    token: string;
+  };
 } & IRequest;
 
 export type PASTE_TYPES = 'paste' | 'text' | 'link' | 'large_paste';

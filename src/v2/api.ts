@@ -17,6 +17,7 @@ import { sha256 } from 'js-sha256';
 import { HeadObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import Config from '../config';
+import { do_auth_v2, v2_token_check_scope } from './auth';
 
 /* RESTful API (v2) */
 export const router = Router<ERequest, [Env, ExecutionContext]>({ base: '/v2' });
@@ -312,11 +313,7 @@ router.post('/complete/:uuid', async (req, env, ctx) => {
   return PasteAPIRepsonse.info(descriptor);
 });
 
-router.get('/config', async (req, env, ctx) => {
-  const auth = get_auth(req, 'x-auth-token') as string | null;
-  if (!auth || !Config.check_auth(auth)) {
-    return PasteAPIRepsonse.build(404, 'Invalid endpoint.');
-  }
+router.get('/config', do_auth_v2('both', ['paste.config']), async (req, env, ctx) => {
   const config = Config.get().config();
   if (config.storages) {
     // Erase sensitive infomation
@@ -328,11 +325,7 @@ router.get('/config', async (req, env, ctx) => {
   return PasteAPIRepsonse.build(200, config, 'Config');
 });
 
-router.post('/config', async (req, env, ctx) => {
-  const auth = get_auth(req, 'x-auth-token') as string | null;
-  if (!auth || !Config.check_auth(auth)) {
-    return PasteAPIRepsonse.build(404, 'Invalid endpoint.');
-  }
+router.post('/config', do_auth_v2('both', ['paste.config']), async (req, env, ctx) => {
   let new_config: ConfigParams | undefined;
   try {
     const _params: ConfigParams = await req.json();
@@ -343,11 +336,34 @@ router.post('/config', async (req, env, ctx) => {
   } catch (e) {
     return PasteAPIRepsonse.build(400, 'Invalid request.');
   }
-  const res = await Config.update(new_config, auth);
+  const res = await Config.update(new_config);
   if (res) {
     return PasteAPIRepsonse.build(200, 'Config updated.');
   }
   return PasteAPIRepsonse.build(400, 'Unable to update config.');
+});
+
+// List available storage
+router.get('/storage', async (req, env, ctx) => {
+  const token = get_auth(req, 'x-auth-token') as string | null;
+  const config = Config.get().config();
+  // Use v2 token auth
+  const can_list_protected = token != null && (await v2_token_check_scope(['paste.storage.list'], token));
+  // Only include protected entities to user with granted scope
+  return PasteAPIRepsonse.build(
+    200,
+    config.storages
+      .filter((ent) => ent.protected != true || can_list_protected)
+      .map((ent) => {
+        return {
+          name: ent.name,
+          max_file_size: ent.max_file_size,
+          max_valid_ttl: ent.max_valid_ttl,
+          protected: ent.protected ? true : undefined,
+        };
+      }),
+    'Storages'
+  );
 });
 
 // Fallback route

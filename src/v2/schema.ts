@@ -126,8 +126,10 @@ export interface StorageConfigParams {
 }
 
 export interface ConfigParams {
-  // Access token to read/modify runtime config
+  // Static access token to read/modify runtime config
   config_auth_token: string;
+  // V2 token auth endpoint
+  auth_v2_endpoint?: string;
   // UUID length
   uuid_length: number;
   // Base path to this service
@@ -160,6 +162,7 @@ export const StorageConfigParamsValidator = new Validator(storage_config_rules);
 
 const config_rules = {
   config_auth_token: new Rule({ type: 'string', notEmpty: true }),
+  auth_v2_endpoint: new Rule({ type: 'string', notEmpty: true }),
   uuid_length: new Rule({ type: 'int', min: 1 }),
   public_url: new Rule({ type: 'url' }),
   frontend_url: new Rule({ type: 'url', optional: true }),

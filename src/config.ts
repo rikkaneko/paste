@@ -31,10 +31,7 @@ class Config {
     Config.config_name = config_name;
   }
 
-  static async update(config: ConfigParams, config_auth_token: string): Promise<boolean> {
-    if (!Config.check_auth(config_auth_token)) {
-      return false;
-    }
+  static async update(config: ConfigParams): Promise<boolean> {
     await Config.kv.put(Config.config_name, JSON.stringify(config));
     Config._config = structuredClone(config);
     return true;
