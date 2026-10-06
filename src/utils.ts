@@ -1,6 +1,6 @@
 /*
  * This file is part of paste.
- * Copyright (c) 2022-2024 Joe Ma <rikkaneko23@gmail.com>
+ * Copyright (c) 2022-2026 Joe Ma <rikkaneko23@gmail.com>
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as published by
@@ -249,7 +249,7 @@ export async function get_presign_url(uuid: string, descriptor: PasteIndexEntry)
     s3,
     new GetObjectCommand({
       Bucket: storage.bucket_name,
-      Key: uuid,
+      Key: `${storage.base_path || ''}uuid`,
       ResponseContentDisposition: `inline; filename*=UTF-8''${encodeURIComponent(descriptor.title ?? uuid)}`,
       ResponseContentType: descriptor.mime_type ?? 'text/plain; charset=UTF-8;',
     }),

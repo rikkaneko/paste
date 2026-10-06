@@ -103,14 +103,16 @@ export interface StorageConfigParams {
   endpoint: string;
   // Custom endpoint for downloads
   download_endpoint?: string;
+  // Control whether this (download) endpoint can proxy through Cloudflare CDN. When true, redirect to presigned url instead.
+  no_proxy_cdn?: boolean;
   // Custom endpoint for downloads
   upload_endpoint?: string;
-  // Control whether this endpoint can proxy through Cloudflare CDN
-  no_proxy_cdn?: boolean;
   // Region (Default to us-east-1 if not specified)
   region?: string;
   // Bucket name
   bucket_name: string;
+  // Base path (Must end with trailing "/" when defined)
+  base_path?: string;
   // AWS access key ID
   access_key_id: string;
   // Secret key associated with an AWS access key ID
@@ -119,6 +121,8 @@ export interface StorageConfigParams {
   max_file_size: number;
   // Maximum time paste can remain valid in this endpoint (Default to 28 days if not specified)
   max_valid_ttl?: number;
+  // Required authorized user
+  protected?: boolean;
 }
 
 export interface ConfigParams {
@@ -140,14 +144,16 @@ const storage_config_rules = {
   name: new Rule({ type: 'string', notEmpty: true }),
   endpoint: new Rule({ type: 'url', notEmpty: true }),
   download_endpoint: new Rule({ type: 'url', notEmpty: true, optional: true }),
-  upload_endpoint: new Rule({ type: 'url', notEmpty: true, optional: true }),
   no_proxy_cdn: new Rule({ type: 'boolean', optional: true }),
+  upload_endpoint: new Rule({ type: 'url', notEmpty: true, optional: true }),
   region: new Rule({ type: 'string', optional: true }),
   bucket_name: new Rule({ type: 'string', notEmpty: true }),
+  base_path: new Rule({ type: 'string', optional: true, custom: (val: string) => val.endsWith('/') }),
   access_key_id: new Rule({ type: 'string', notEmpty: true }),
   secret_access_key: new Rule({ type: 'string', notEmpty: true }),
   max_file_size: new Rule({ type: 'int' }),
   max_valid_ttl: new Rule({ type: 'int', optional: true }),
+  protected: new Rule({ type: 'boolean', optional: true })
 };
 
 export const StorageConfigParamsValidator = new Validator(storage_config_rules);

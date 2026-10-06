@@ -71,8 +71,7 @@ router.post('/info/:uuid', async (req, env, ctx) => {
 
   // Check password if needed
   if (descriptor.password !== undefined) {
-    const { headers } = req;
-    let cert = get_auth(req);
+    let cert = get_auth(req, 'x-pass');
     // Error occurred when parsing the header
     if (cert === null) {
       return PasteAPIRepsonse.build(
@@ -193,7 +192,7 @@ router.post('/create', async (req, env, ctx) => {
     s3,
     new PutObjectCommand({
       Bucket: storage.bucket_name,
-      Key: uuid,
+      Key: `${storage.base_path || ''}uuid`,
       ChecksumSHA256: encoded_hash,
       ChecksumAlgorithm: 'SHA256',
       ContentType: params.file_size.toString(),
@@ -282,7 +281,7 @@ router.post('/complete/:uuid', async (req, env, ctx) => {
     const objectmeta = await s3.send(
       new HeadObjectCommand({
         Bucket: storage.bucket_name,
-        Key: uuid,
+        Key: `${storage.base_path || ''}uuid`,
       })
     );
     if (objectmeta.$metadata.httpStatusCode === 200) {

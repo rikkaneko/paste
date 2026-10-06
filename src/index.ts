@@ -1,6 +1,6 @@
 /*
  * This file is part of paste.
- * Copyright (c) 2022-2025 Joe Ma <rikkaneko23@gmail.com>
+ * Copyright (c) 2022-2026 Joe Ma <rikkaneko23@gmail.com>
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as published by
@@ -274,7 +274,7 @@ router.post('/', async (request, env, ctx) => {
   const res = await s3.send(
     new PutObjectCommand({
       Bucket: storage.bucket_name,
-      Key: uuid,
+      Key: `${storage.base_path || ''}uuid`,
       Body: buffer,
     })
   );
@@ -459,7 +459,7 @@ router.get('/:uuid/:option?', async (request, env, ctx) => {
     const origin = await s3.send(
       new GetObjectCommand({
         Bucket: storage.bucket_name,
-        Key: uuid,
+        Key: `${storage.base_path || ''}uuid`,
         IfNoneMatch: match_etag,
       })
     );
@@ -620,7 +620,7 @@ router.delete('/:uuid', async (request, env, ctx) => {
   const res = await s3.send(
     new DeleteObjectCommand({
       Bucket: storage.bucket_name,
-      Key: uuid,
+      Key: `${storage.base_path || ''}uuid`,
     })
   );
 
