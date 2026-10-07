@@ -12,7 +12,7 @@ execFileSync(join(projectRoot, 'node_modules/.bin/tsc'), ['--noEmit', 'false', '
   cwd: projectRoot,
 });
 
-const state = { entries: new Map(), object: null, writes: [], uploads: 0, pending: [], maxFileSize: 100, maxTtl: 86400, corsDomains: [] };
+const state = { entries: new Map(), objects: new Map(), s3Commands: [], writes: [], uploads: 0, pending: [], maxFileSize: 100, maxTtl: 86400, corsDomains: [], basePath: undefined, nextUuid: 'abcd' };
 class PutObjectCommand {
   constructor(input) {
     this.input = input;
@@ -23,15 +23,25 @@ class GetObjectCommand {
     this.input = input;
   }
 }
+class DeleteObjectCommand {
+  constructor(input) {
+    this.input = input;
+  }
+}
 class S3Client {
   async send(command) {
+    state.s3Commands.push(command);
     if (command instanceof PutObjectCommand) {
       state.uploads++;
-      state.object = command.input.Body;
+      state.objects.set(command.input.Key, command.input.Body);
       return { $metadata: { httpStatusCode: 200 } };
     }
     if (command instanceof GetObjectCommand) {
-      return { $metadata: { httpStatusCode: 200 }, Body: new Blob([state.object]).stream(), ETag: 'test-etag' };
+      return { $metadata: { httpStatusCode: 200 }, Body: new Blob([state.objects.get(command.input.Key)]).stream(), ETag: 'test-etag' };
+    }
+    if (command instanceof DeleteObjectCommand) {
+      state.objects.delete(command.input.Key);
+      return { $metadata: { httpStatusCode: 204 } };
     }
     throw new Error('Unexpected S3 command');
   }
@@ -46,7 +56,7 @@ class Config {
     return { public_url: 'https://pb.example.test', uuid_length: 4, cors_domain: state.corsDomains };
   }
   filter_storage(name) {
-    return name === 'default' ? { max_file_size: state.maxFileSize, max_valid_ttl: state.maxTtl } : null;
+    return name === 'default' ? { max_file_size: state.maxFileSize, max_valid_ttl: state.maxTtl, base_path: state.basePath } : null;
   }
 }
 
@@ -63,7 +73,7 @@ Module._load = function (request, parent, isMain) {
         headers: { 'content-type': 'application/json' },
       }),
       get_auth: () => null,
-      gen_id: () => 'abcd',
+      gen_id: () => state.nextUuid,
       get_presign_url: async () => null,
     };
   }
@@ -71,7 +81,7 @@ Module._load = function (request, parent, isMain) {
     return { PasteType: { paste: 1, link: 2, large_paste: 3 }, PasteTypeFrom: (value) => value === 'link' ? 2 : 1 };
   }
   if (request === '@aws-sdk/client-s3') {
-    return { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand: class {} };
+    return { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand };
   }
   return originalLoad(request, parent, isMain);
 };
@@ -93,13 +103,16 @@ const ctx = { waitUntil: (promise) => state.pending.push(promise) };
 
 beforeEach(() => {
   state.entries.clear();
-  state.object = null;
+  state.objects.clear();
+  state.s3Commands = [];
   state.writes = [];
   state.uploads = 0;
   state.pending = [];
   state.maxFileSize = 100;
   state.maxTtl = 86400;
   state.corsDomains = [];
+  state.basePath = undefined;
+  state.nextUuid = 'abcd';
 });
 
 test('Text form expiry is stored in milliseconds and sets KV lifetime', async () => {
@@ -132,6 +145,41 @@ test('URL form expiry preserves link redirect and absolute KV expiration', async
   assert.equal(opened.status, 301);
   assert.equal(opened.headers.get('location'), 'https://example.com/target');
   assert.equal(state.writes[1].expiration, Math.ceil(expiry / 1000));
+});
+
+test('Form uploads use separate UUID object keys for upload, retrieval, and deletion', async () => {
+  for (const basePath of [undefined, 'prefix/']) {
+    state.entries.clear();
+    state.objects.clear();
+    state.s3Commands = [];
+    state.pending = [];
+    state.basePath = basePath;
+
+    state.nextUuid = 'abcd';
+    const first = await app.fetch(new Request('https://pb.example.test/', { method: 'POST', body: 'first' }), env, ctx);
+    await Promise.all(state.pending);
+    assert.equal(first.status, 200);
+
+    state.nextUuid = 'efgh';
+    const second = await app.fetch(new Request('https://pb.example.test/', { method: 'POST', body: 'second' }), env, ctx);
+    await Promise.all(state.pending);
+    assert.equal(second.status, 200);
+
+    const firstKey = `${basePath ?? ''}abcd`;
+    const secondKey = `${basePath ?? ''}efgh`;
+    assert.deepEqual([...state.objects.keys()], [firstKey, secondKey]);
+
+    const firstRead = await app.fetch(new Request('https://pb.example.test/abcd'), env, ctx);
+    const secondRead = await app.fetch(new Request('https://pb.example.test/efgh'), env, ctx);
+    assert.equal(await firstRead.text(), 'first');
+    assert.equal(await secondRead.text(), 'second');
+
+    const deleted = await app.fetch(new Request('https://pb.example.test/abcd', { method: 'DELETE' }), env, ctx);
+    await Promise.all(state.pending);
+    assert.equal(deleted.status, 200);
+    assert.deepEqual([...state.objects.keys()], [secondKey]);
+    assert.deepEqual(state.s3Commands.map((command) => command.input.Key), [firstKey, secondKey, firstKey, secondKey, firstKey]);
+  }
 });
 
 test('Missing form expiry retains the seven-day default', async () => {

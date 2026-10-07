@@ -249,7 +249,7 @@ export async function get_presign_url(uuid: string, descriptor: PasteIndexEntry)
     s3,
     new GetObjectCommand({
       Bucket: storage.bucket_name,
-      Key: `${storage.base_path || ''}uuid`,
+      Key: `${storage.base_path || ''}${uuid}`,
       ResponseContentDisposition: `inline; filename*=UTF-8''${encodeURIComponent(descriptor.title ?? uuid)}`,
       ResponseContentType: descriptor.mime_type ?? 'text/plain; charset=UTF-8;',
     }),

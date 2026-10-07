@@ -319,7 +319,7 @@ router.post('/', async (request, env, ctx) => {
   const res = await s3.send(
     new PutObjectCommand({
       Bucket: storage.bucket_name,
-      Key: `${storage.base_path || ''}uuid`,
+      Key: `${storage.base_path || ''}${uuid}`,
       Body: buffer,
     })
   );
@@ -504,7 +504,7 @@ router.get('/:uuid/:option?', async (request, env, ctx) => {
     const origin = await s3.send(
       new GetObjectCommand({
         Bucket: storage.bucket_name,
-        Key: `${storage.base_path || ''}uuid`,
+        Key: `${storage.base_path || ''}${uuid}`,
         IfNoneMatch: match_etag,
       })
     );
@@ -661,7 +661,7 @@ router.delete('/:uuid', async (request, env, ctx) => {
   const res = await s3.send(
     new DeleteObjectCommand({
       Bucket: storage.bucket_name,
-      Key: `${storage.base_path || ''}uuid`,
+      Key: `${storage.base_path || ''}${uuid}`,
     })
   );
 

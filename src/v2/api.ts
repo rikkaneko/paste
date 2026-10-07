@@ -193,7 +193,7 @@ router.post('/create', async (req, env, ctx) => {
     s3,
     new PutObjectCommand({
       Bucket: storage.bucket_name,
-      Key: `${storage.base_path || ''}uuid`,
+      Key: `${storage.base_path || ''}${uuid}`,
       ChecksumSHA256: encoded_hash,
       ChecksumAlgorithm: 'SHA256',
       ContentType: params.file_size.toString(),
@@ -282,7 +282,7 @@ router.post('/complete/:uuid', async (req, env, ctx) => {
     const objectmeta = await s3.send(
       new HeadObjectCommand({
         Bucket: storage.bucket_name,
-        Key: `${storage.base_path || ''}uuid`,
+        Key: `${storage.base_path || ''}${uuid}`,
       })
     );
     if (objectmeta.$metadata.httpStatusCode === 200) {
@@ -375,4 +375,3 @@ export default router;
 function to_human_readable_size(max_file_size: number) {
   throw new Error('Function not implemented.');
 }
-
