@@ -332,7 +332,7 @@ export interface PasteInfo {
 
 ### `POST /v2/info/<uuid>`
 
-If the paste has password, authentication is required via `x-auth-key` headers or query parameters and Bearer authentication.
+If the paste has password, authentication is required via `x-pass` headers or query parameters and Bearer authentication.
 
 #### Request
 
@@ -461,7 +461,28 @@ LGPL-3.0-or-later. See the license header in source files for details.
 , and Blackblaze B2 in [here](https://www.backblaze.com/b2/docs/lifecycle_rules.html).
 
 ## Paste API client
-The Paste API client for the command line interface (CLI), as well as versions for Android and iOS, will be available soon. :D
+
+The Bash CLI is available at `client/paste-cli`.
+
+### Requirements
+- `curl`
+- `file`
+- `jq`
+- `sha256sum`
+
+### Subcommand
+
+```bash
+client/paste-cli upload --file example.txt --expired_at 2026-09-10T08:00
+client/paste-cli info <uuid>
+client/paste-cli info <uuid> --password <current-password> --title "New title"
+client/paste-cli get <uuid> -o example.txt
+client/paste-cli delete <uuid> --password <current-password>
+client/paste-cli list-storage
+client/paste-cli list-storage --auth-token <v2-token-or-admin-token>
+client/paste-cli config --auth-token <v2-token-or-admin-token>
+client/paste-cli config --auth-token <v2-token-or-admin-token> --file <path>
+```
 
 ## Remark
 

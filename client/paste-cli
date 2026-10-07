@@ -1,0 +1,572 @@
+#!/bin/bash
+set -eo pipefail
+
+# Default Configuration
+DEFAULT_ENDPOINT="https://pb.nekoid.cc"
+ENDPOINT="${DEFAULT_ENDPOINT}"
+
+# ANSI Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+BLUE='\033[0;34m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
+
+# Dependency Check
+for cmd in curl jq sha256sum file; do
+    if ! command -v "$cmd" &> /dev/null; then
+        echo -e "${RED}Error: Required command '$cmd' not found.${NC}"
+        exit 1
+    fi
+done
+
+# Format API millisecond timestamps for terminal output without changing request values.
+PASTE_INFO_DISPLAY_FILTER='
+  def iso_millis:
+    if type == "number" then
+      . as $ms
+      | ($ms / 1000 | todateiso8601 | rtrimstr("Z")) + "." + ((1000 + ($ms % 1000)) | tostring | .[1:]) + "Z"
+    else . end;
+  if .PasteInfo then
+    .PasteInfo |= (.created_at |= iso_millis | .expired_at |= iso_millis)
+  else . end
+'
+
+# Normalize an ISO 8601 date or timestamp to the millisecond value expected by the API.
+EXPIRED_AT_MILLIS_FILTER='
+  if test("^[0-9]+$") then
+    tonumber
+  else
+    (if test("^[0-9]{4}-[0-9]{2}-[0-9]{2}$") then . + "T00:00:00Z" else . end)
+    | capture("^(?<whole>[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2})(?:\\.(?<fraction>[0-9]{1,9}))?(?<zone>Z|[+-][0-9]{2}:[0-9]{2})?$") as $iso
+    | ($iso.whole + "Z") as $whole
+    | ($whole | fromdateiso8601) as $seconds
+    | if ($seconds | todateiso8601) != $whole then error("Invalid calendar date") else
+        (($iso.fraction // "0") + "000" | .[:3] | tonumber) as $millis
+        | (if $iso.zone == null or $iso.zone == "Z" then 0 else
+            ($iso.zone[1:3] | tonumber) as $hours
+            | ($iso.zone[4:6] | tonumber) as $minutes
+            | if $hours > 23 or $minutes > 59 then error("Invalid UTC offset") else
+                (if $iso.zone[0:1] == "+" then 1 else -1 end) * ($hours * 60 + $minutes)
+              end
+          end) as $offset
+        | ($seconds - $offset * 60) * 1000 + $millis
+      end
+  end
+'
+
+# ==============================================================================
+# Helper Functions
+# ==============================================================================
+
+log_info() { echo -e "${BLUE}[info]${NC} $1"; }
+log_success() { echo -e "${GREEN}[success]${NC} $1"; }
+log_warn() { echo -e "${YELLOW}[warn]${NC} $1"; }
+log_error() { echo -e "${RED}[error]${NC} $1" >&2; }
+
+# Quote every argument so the logged command can be replayed in Bash.
+curl() {
+    local rendered='curl' arg quoted
+    local single_quote="'" embedded_quote="'\"'\"'"
+    for arg in "$@"; do
+        if [[ "$arg" =~ [[:cntrl:]] ]]; then
+            printf -v quoted '%q' "$arg"
+            rendered+=" $quoted"
+        else
+            quoted=${arg//"$single_quote"/"$embedded_quote"}
+            rendered+=" '$quoted'"
+        fi
+    done
+    printf "${BLUE}[info]${NC} %s\n" "$rendered" >&2
+    command curl "$@"
+}
+
+# Capture the final HTTP status and body so errors retain the server's full message.
+http_request() {
+    local result curl_status=0
+    result=$(curl -sS -w $'\n%{http_code}' "$@") || curl_status=$?
+    HTTP_STATUS="${result##*$'\n'}"
+    HTTP_BODY="${result%$'\n'*}"
+    if [ "$curl_status" -ne 0 ]; then
+        log_error "http request failed."
+        if [ -n "$HTTP_BODY" ]; then printf '%s\n' "$HTTP_BODY" >&2; fi
+        return 1
+    fi
+    if [[ ! "$HTTP_STATUS" =~ ^2[0-9][0-9]$ ]]; then
+        log_error "server replied $HTTP_STATUS response:"
+        printf '%s\n' "$HTTP_BODY" >&2
+        return 1
+    fi
+}
+
+print_help_global() {
+    echo "Usage: $(basename "$0") [OPTIONS] <COMMAND> [ARGS]"
+    echo ""
+    echo "Options:"
+    echo "  --endpoint <url>    Set service endpoint (Default: $DEFAULT_ENDPOINT)"
+    echo "  --help              Show this help message"
+    echo ""
+    echo "Commands:"
+    echo "  upload   Create a new paste"
+    echo "  info     Retrieve or edit paste info"
+    echo "  get      Download a paste by UUID"
+    echo "  delete   Delete a paste by UUID"
+    echo "  list-storage   List available storage locations"
+    echo "  config   Retrieve or edit server runtime config"
+}
+
+# ==============================================================================
+# Subcommand: Upload
+# ==============================================================================
+
+cmd_upload() {
+    local file_path=""
+    local use_stdin=false
+    local location="default"
+    local password=""
+    local max_access_n=""
+    local title=""
+    local mime_type=""
+    local expired_at=""
+    
+    # Parse Upload Args
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --file) file_path="$2"; shift 2 ;;
+            --stdin) use_stdin=true; shift 1 ;;
+            --location) location="$2"; shift 2 ;;
+            --password) password="$2"; shift 2 ;;
+            --max_access_n) max_access_n="$2"; shift 2 ;;
+            --title) title="$2"; shift 2 ;;
+            --mime_type) mime_type="$2"; shift 2 ;;
+            --expired_at)
+                if [[ $# -lt 2 || -z "$2" ]]; then log_error "missing value for --expired_at."; return 1; fi
+                expired_at="$2"; shift 2 ;;
+            --help)
+                echo "Usage: upload --file <path> [options]"
+                echo "Options:"
+                echo "  --file <path>       File to upload"
+                echo "  --stdin             Read content from stdin"
+                echo "  --location <loc>    Storage location (default: default)"
+                echo "  --password <str>    Set password"
+                echo "  --title <str>       Set title"
+                echo "  --mime_type <str>   Set MIME type"
+                echo "  --expired_at <time> Set expiration as ISO 8601 or Unix milliseconds"
+                exit 0 ;;
+            *) log_error "Unknown arg: $1"; exit 1 ;;
+        esac
+    done
+
+    if [ -n "$expired_at" ]; then
+        if ! expired_at=$(jq -ner --arg value "$expired_at" '$value | '"$EXPIRED_AT_MILLIS_FILTER"); then
+            log_error "invalid --expired_at: use an ISO 8601 timestamp or Unix milliseconds."
+            return 1
+        fi
+    fi
+
+    # Handle Input Source
+    local temp_file=""
+    if [ "$use_stdin" = true ]; then
+        temp_file=$(mktemp)
+        cat /dev/stdin > "$temp_file"
+        file_path="$temp_file"
+        trap 'rm -f "$temp_file"' EXIT
+    elif [ -z "$file_path" ]; then
+        log_error "either --file or --stdin must be provided."
+        exit 1
+    fi
+
+    if [ ! -f "$file_path" ]; then
+        log_error "Unable to find $file_path"
+        exit 1
+    fi
+
+    # 1. Calculate Metadata
+    log_info "calculating file hash and size..."
+    case $(uname -s) in
+        Darwin) STAT_SIZE_CMD="stat -f %z" ;;
+        *)      STAT_SIZE_CMD="stat -c %s" ;;
+    esac
+    local file_size=$($STAT_SIZE_CMD "$file_path")
+    local file_hash=$(sha256sum "$file_path" | awk '{print $1}')
+    
+    # Auto-detect mime if not set
+    if [ -z "$mime_type" ]; then
+        mime_type=$(file --mime-type -b "$file_path")
+    fi
+
+    # 2. Prepare /v2/create Payload
+    local json_payload
+    json_payload=$(jq -n \
+                  --arg pw "$password" \
+                  --arg max "$max_access_n" \
+                  --arg ti "$title" \
+                  --arg mime "$mime_type" \
+                  --argjson size "$file_size" \
+                  --arg hash "$file_hash" \
+                  --arg loc "$location" \
+                  --arg exp "$expired_at" \
+                  '{
+                    file_size: $size,
+                    file_hash: $hash,
+                    location: $loc
+                  } | 
+                  if $pw != "" then . + {password: $pw} else . end |
+                  if $max != "" then . + {max_access_n: ($max|tonumber)} else . end |
+                  if $ti != "" then . + {title: $ti} else . end |
+                  if $mime != "" then . + {mime_type: $mime} else . end |
+                  if $exp != "" then . + {expired_at: ($exp|tonumber)} else . end')
+
+    log_info "creating new paste..."
+    if ! http_request -X POST "${ENDPOINT}/v2/create" \
+        -H "Content-Type: application/json" \
+        -d "$json_payload"; then
+        exit 1
+    fi
+    local create_resp="$HTTP_BODY"
+
+    local uuid=$(echo "$create_resp" | jq -r '.PasteCreateUploadResponse.uuid')
+    local upload_url=$(echo "$create_resp" | jq -r '.PasteCreateUploadResponse.upload_url')
+    
+    if [ "$uuid" == "null" ]; then
+        log_error "failed to retrieve uuid. server replied: $create_resp"
+        exit 1
+    fi
+
+    # 3. Upload to S3 (PUT)
+    # Extract strict headers required by S3
+    local -a header_args=()
+    while IFS= read -r header; do
+        header_args+=("-H" "$header")
+    done < <(echo "$create_resp" | jq -r '.PasteCreateUploadResponse.request_headers | to_entries | .[] | "\(.key): \(.value)"')
+
+    log_info "uploading..."
+    # Match the binary upload headers
+    if ! http_request -X PUT "${header_args[@]}" -H "Content-Type: $mime_type" -T"$file_path" "$upload_url"; then
+        exit 1
+    fi
+
+    # 4. Finalize /v2/complete
+    log_info "finalizing paste..."
+    if ! http_request -X POST "${ENDPOINT}/v2/complete/${uuid}"; then
+        exit 1
+    fi
+    local complete_resp="$HTTP_BODY"
+
+    if ! jq -e '.PasteInfo.uuid' <<< "$complete_resp" >/dev/null; then
+        log_error "unable to finalize paste, server replied: $complete_resp"
+        exit 1
+    fi
+    log_success "paste #${YELLOW}${uuid}${NC} created."
+    jq "$PASTE_INFO_DISPLAY_FILTER | .PasteInfo" <<< "$complete_resp"
+}
+
+# ==============================================================================
+# Subcommand: Info
+# ==============================================================================
+
+cmd_info() {
+    local uuid=""
+    local auth_key=""
+    local update_mode=false
+    # Update params
+    local password=""
+    local max_access_n=""
+    local title=""
+    local mime_type=""
+    local expired_at=""
+
+    if [[ -z "$1" || "$1" == --* ]]; then
+        echo "Usage: info <uuid> [options]"
+        echo "Options:"
+        echo "  --password <key>    Key for protected pastes"
+        echo "  --title <str>       Update title"
+        echo "  --password <str>    Update password"
+        echo "  --mime_type <str>   Update mime type"
+        echo "  --expired_at <time> Update expiration as ISO 8601 or Unix milliseconds"
+        exit 1
+    fi
+    uuid="$1"
+    shift
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --password) auth_key="$2"; shift 2 ;;
+            --password) password="$2"; update_mode=true; shift 2 ;;
+            --max_access_n) max_access_n="$2"; update_mode=true; shift 2 ;;
+            --title) title="$2"; update_mode=true; shift 2 ;;
+            --mime_type) mime_type="$2"; update_mode=true; shift 2 ;;
+            --expired_at)
+                if [[ $# -lt 2 || -z "$2" ]]; then log_error "missing value for --expired_at."; return 1; fi
+                expired_at="$2"; update_mode=true; shift 2 ;;
+            --help) exit 0 ;;
+            *) log_error "unknown arg: $1"; exit 1 ;;
+        esac
+    done
+
+    if [ -n "$expired_at" ]; then
+        if ! expired_at=$(jq -ner --arg value "$expired_at" '$value | '"$EXPIRED_AT_MILLIS_FILTER"); then
+            log_error "invalid --expired_at: use an iso 8601 timestamp or unix milliseconds."
+            return 1
+        fi
+    fi
+
+    local -a headers=()
+    if [ -n "$auth_key" ]; then
+        if [ "$update_mode" = true ]; then
+            headers+=("-H" "x-pass: $auth_key")
+        else
+            headers+=("-H" "x-auth-key: $auth_key")
+        fi
+    fi
+    if [ "$update_mode" = true ]; then
+        log_info "updating paste info for #${YELLOW}${uuid}${NC}..."
+        local json_payload
+        json_payload=$(jq -n \
+                      --arg pw "$password" \
+                      --arg max "$max_access_n" \
+                      --arg ti "$title" \
+                      --arg mime "$mime_type" \
+                      --arg exp "$expired_at" \
+                      '{} |
+                      if $pw != "" then . + {password: $pw} else . end |
+                      if $max != "" then . + {max_access_n: ($max|tonumber)} else . end |
+                      if $ti != "" then . + {title: $ti} else . end |
+                      if $mime != "" then . + {mime_type: $mime} else . end |
+                      if $exp != "" then . + {expired_at: ($exp|tonumber)} else . end')
+        
+        if ! http_request -X POST "${headers[@]}" \
+            -H "Content-Type: application/json" \
+            -d "$json_payload" \
+            "${ENDPOINT}/v2/info/${uuid}"; then
+            return 1
+        fi
+        jq "$PASTE_INFO_DISPLAY_FILTER" <<< "$HTTP_BODY"
+    else
+        log_info "fetching paste info for #${YELLOW}${uuid}${NC}..."
+        if ! http_request -X GET "${headers[@]}" "${ENDPOINT}/v2/info/${uuid}"; then
+            return 1
+        fi
+        jq "$PASTE_INFO_DISPLAY_FILTER" <<< "$HTTP_BODY"
+    fi
+}
+
+# ==============================================================================
+# Subcommand: Get
+# ==============================================================================
+
+cmd_get() {
+    local uuid=""
+    local output_file=""
+    local auth_key=""
+
+    if [[ $# -eq 0 ]]; then show_help_get; exit 1; fi
+    uuid="$1"; shift
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -o) output_file="$2"; shift 2 ;;
+            --password) auth_key="$2"; shift 2 ;;
+            --help) show_help_get; exit 0 ;;
+            *) log_error "unknown argument: $1"; exit 1 ;;
+        esac
+    done
+
+    local -a headers
+    if [ -n "$auth_key" ]; then headers+=("-H" "x-auth-key: $auth_key"); fi
+    
+    # 1. Determine Filename
+    local final_output="$output_file"
+    
+    if [ -z "$final_output" ]; then
+        log_info "fetching paste info for #${YELLOW}${uuid}${NC}..."
+        if ! http_request "${headers[@]}" "${ENDPOINT}/v2/info/${uuid}"; then
+            exit 1
+        fi
+        local info_response="$HTTP_BODY"
+
+        # Extract title from "PasteInfo" wrapper
+        local remote_title=$(echo "$info_response" | jq -r '."PasteInfo".title // empty')
+        
+        if [ -n "$remote_title" ] && [ "$remote_title" != "null" ]; then
+            # Sanitize filename (replace slashes with underscores)
+            final_output="${remote_title//\//_}"
+        else
+            log_warn "no title is found for #${YELLOW}${uuid}${NC}."
+            final_output="$uuid"
+        fi
+    fi
+
+    # 2. Download File
+    log_info "downloading to $final_output..."
+    # Capture the body before replacing the destination, so HTTP errors stay visible.
+    local download_temp
+    download_temp=$(mktemp)
+    local download_status
+    if ! download_status=$(curl -sS "${headers[@]}" -o "$download_temp" -w '%{http_code}' "${ENDPOINT}/${uuid}"); then
+        log_error "download failed."
+        if [ -s "$download_temp" ]; then cat "$download_temp" >&2; fi
+        rm -f "$download_temp"
+        exit 1
+    fi
+    if [[ ! "$download_status" =~ ^2[0-9][0-9]$ ]]; then
+        log_error "http $download_status response:"
+        cat "$download_temp" >&2
+        rm -f "$download_temp"
+        exit 1
+    fi
+    mv "$download_temp" "$final_output"
+    log_success "saved to $final_output"
+}
+
+# ==============================================================================
+# Subcommand: Delete
+# ==============================================================================
+
+cmd_delete() {
+  local uuid="";
+  local auth_key="";
+
+  if [[ "${1:-}" == "--help" ]]; then
+    echo "usage: delete <uuid> [--password <password>]";
+    return 0;
+  fi
+  if [[ $# -eq 0 || "$1" == --* ]]; then
+    log_error "usage: delete <uuid> [--password <password>]";
+    return 1;
+  fi
+  uuid="$1";
+  shift;
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --password)
+        if [[ $# -lt 2 || -z "$2" ]]; then log_error "missing value for --password."; return 1; fi
+        auth_key="$2";
+        shift 2;
+        ;;
+      *) log_error "unknown argument: $1"; return 1 ;;
+    esac
+  done
+
+  local -a headers=();
+  if [[ -n "$auth_key" ]]; then headers+=("-H" "x-auth-key: $auth_key"); fi
+  if ! http_request -X DELETE "${headers[@]}" "${ENDPOINT}/${uuid}"; then
+    return 1;
+  fi
+  log_success "paste #${YELLOW}${uuid}${NC} deleted.";
+}
+
+# ==============================================================================
+# Subcommand: List Storage
+# ==============================================================================
+
+cmd_list_storage() {
+  local auth_token="";
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --auth-token)
+        if [[ $# -lt 2 || -z "$2" ]]; then log_error "missing value for --auth-token."; return 1; fi
+        auth_token="$2";
+        shift 2;
+        ;;
+      --help)
+        echo "Usage: list-storage [--auth-token <token>]";
+        return 0;
+        ;;
+      *) log_error "unknown argument: $1"; return 1 ;;
+    esac
+  done
+
+  local -a headers=();
+  if [[ -n "$auth_token" ]]; then headers+=("-H" "Authorization: Bearer $auth_token"); fi
+  if ! http_request -X GET "${headers[@]}" "${ENDPOINT}/v2/storage"; then
+    return 1;
+  fi
+  jq . <<< "$HTTP_BODY";
+}
+
+# ==============================================================================
+# Subcommand: Config
+# ==============================================================================
+
+cmd_config() {
+    local auth_token=""
+    local config_file=""
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --auth-token) auth_token="$2"; shift 2 ;;
+            --file) config_file="$2"; shift 2 ;;
+            --help)
+                echo "Usage: config [options]"
+                echo "Options:"
+                echo "  --auth-token <token>   Admin token"
+                echo "  --file <path>          JSON config file to upload"
+                exit 0 ;;
+            *) log_error "unknown arg: $1"; exit 1 ;;
+        esac
+    done
+
+    # Headers for config are likely Bearer auth based on schema "config_auth_token"
+    # or specific admin header. Assuming Bearer based on "POST /v2/info" hint about Bearer.
+    local -a headers=()
+    if [ -n "$auth_token" ]; then
+        headers+=("-H" "Authorization: Bearer $auth_token")
+    fi
+
+    if [ -n "$config_file" ]; then
+        if [ ! -f "$config_file" ]; then
+            log_error "unable to find config file."
+            exit 1
+        fi
+        log_info "uploading runtime config..."
+        # Assuming PUT or POST for config update. Spec implies POST/PUT handling.
+        # Defaulting to POST based on other endpoints.
+        if ! http_request -X POST "${headers[@]}" \
+            -H "Content-Type: application/json" \
+            -d @"$config_file" \
+            "${ENDPOINT}/v2/config"; then
+            return 1
+        fi
+        jq . <<< "$HTTP_BODY"
+    else
+        log_info "retrieving runtime config..."
+        if ! http_request -X GET "${headers[@]}" "${ENDPOINT}/v2/config"; then
+            return 1
+        fi
+        jq . <<< "$HTTP_BODY"
+    fi
+}
+
+# ==============================================================================
+# Main Dispatch
+# ==============================================================================
+
+# Parse global flags (endpoint)
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --endpoint) ENDPOINT="$2"; shift 2 ;;
+        --help) print_help_global; exit 0 ;;
+        -*) log_error "unknown global option: $1"; print_help_global; exit 1 ;;
+        *) break ;; # Stop at first non-flag (command)
+    esac
+done
+
+COMMAND="$1"
+if [ -z "$COMMAND" ]; then
+    print_help_global
+    exit 1
+fi
+shift
+
+case "$COMMAND" in
+    upload) cmd_upload "$@" ;;
+    info)   cmd_info "$@" ;;
+    get)    cmd_get "$@" ;;
+    delete) cmd_delete "$@" ;;
+    list-storage) cmd_list_storage "$@" ;;
+    config) cmd_config "$@" ;;
+    *)      log_error "unknown command: $COMMAND"; print_help_global; exit 1 ;;
+esac
