@@ -65,7 +65,7 @@ export interface StorageConfigParams {
   secret_access_key: string;
   // Maximum acceptable file size for this endpoint
   max_file_size: number;
-  // Maximum time paste can remain valid in this endpoint (Default to 28 days if not specified)
+  // Maximum lifetime in seconds (defaults to 28 days)
   max_valid_ttl?: number;
 }
 
@@ -78,7 +78,7 @@ export interface ConfigParams {
   public_url: string;
   // Base path to frontend assets
   frontend_url?: string;
-  // Allowed CORS domains
+  // Allowed CORS origins and domain patterns
   cors_domain?: string[];
   // Storage configurations
   storages: StorageConfigParams[];
@@ -95,8 +95,8 @@ export interface ConfigParams {
   "public_url": "pb.nekoid.cc",
   // Here I use my github repository as static file host
   "frontend_url": "https://raw.githubusercontent.com/rikkaneko/paste/main/frontend",
-  // Need to match your public domain
-  "cors_domain": ["*.nekoid.cc"],
+  // Subdomains or a specific origin with any port
+  "cors_domain": ["*.nekoid.cc", "http://127.0.0.1:*"],
   "storages": [
     {
       "name": "default",
@@ -118,6 +118,8 @@ export interface ConfigParams {
   ]
 }
 ```
+
+`cors_domain` accepts exact origins (including scheme and port), `*`, subdomain patterns such as `*.nekoid.cc`, and any-port patterns such as `http://127.0.0.1:*`. A subdomain pattern includes child hosts but not the base domain. An any-port pattern keeps the scheme and host fixed and also accepts the default port.
 
 Note that `default` storage is mandatory for the normal operation for this service.
 
@@ -163,8 +165,7 @@ curl -X DELETE https://pb.nekoid.cc/<uuid>
 
 ### **Web**
 
-Use [pb.nekoid.cc](https://pb.nekoid.cc) to submit HTTP form, as same as `curl`.  
-This HTML form currenly only support paste upload.
+Use [pb.nekoid.cc](https://pb.nekoid.cc) to upload a file, text, or URL. Drop a file on the page to select it. Advanced Settings includes an optional expiration date.
 
 ## API Specification
 
@@ -197,6 +198,7 @@ Add `?qr=1` to enable QR code generation for paste link.
 |`paste-type`|Set paste type|
 |`title`|File title|
 |`mime-type`|The media type (MIME) of the data and encoding|
+|`expired_at`|Optional Unix timestamp in milliseconds; must be at least one minute in the future and within default storage's `max_valid_ttl` (28 days if unset)|
 |`json`|Use JSON response|
 
 #### For raw request,
@@ -367,7 +369,7 @@ export interface PasteCreateParams {
   file_hash: string;
   // Select the storage location for this new upload request
   location?: string;
-  // Expired time in UNIX timestamp
+  // Expiration as a Unix timestamp in milliseconds
   expired_at?: number;
 }
 ```
@@ -419,7 +421,7 @@ A [Config](#runtime-config-schema) object on success.
 Support Bearer authentication only.  
 
 #### Required Scopes
-Static admin token *OR* V2 token with `paste.storage.list` scope
+Static admin token *OR* V2 token with `paste.config` scope
 
 #### Request
 
@@ -429,12 +431,11 @@ Accept a [Config](#runtime-config-schema) object in `application/json`.
 
 List available storages.
 
-Protected entities is filtered from unauthenticated user.
+Protected entities are filtered from unauthenticated users. The web page requests the public list without a token.
 
-Support Bearer authentication only.
+#### Optional scope for protected storages
 
-#### Required Scopes
-Static admin token *OR* V2 token with `paste.storage.list` scope
+A V2 token with `paste.storage.list` scope reveals protected entries. Anonymous requests receive public entries only.
 
 #### Response
 
@@ -444,7 +445,7 @@ An array of stripped `Storage` objects on success.
 export interface Storage {
   name: string;
   max_file_size: number;
-  max_valid_ttl: number;
+  max_valid_ttl?: number;
   protected?: boolean
 }
 ```
@@ -453,6 +454,10 @@ export interface Storage {
 
 S3 object lifecycle rules and Cloudflare KV's expiring key can be used to implemented expiring paste.  
 Reference for Amazon S3 can be found in [here](https://docs.aws.amazon.com/AmazonS3/latest/userguide/object-lifecycle-mgmt.html)
+
+## License
+
+LGPL-3.0-or-later. See the license header in source files for details.
 , and Blackblaze B2 in [here](https://www.backblaze.com/b2/docs/lifecycle_rules.html).
 
 ## Paste API client

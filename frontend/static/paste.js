@@ -19,6 +19,7 @@
 /// <reference path="../../node_modules/@types/bootstrap/index.d.ts" />
 
 const ENDPOINT = '';
+const STORAGE_CACHE_KEY = 'cached_paste_storage_list';
 
 let input_div = {
   file: null,
@@ -254,16 +255,6 @@ async function get_file_hash(file, process_cb = null, algo = 'SHA256', chunk_siz
 }
 
 /**
- * Check if date string valid
- *
- * @param {string} datetimeStr
- * @returns {boolean}
- */
-function isDateValid(datetimeStr) {
-  return !isNaN(new Date(datetimeStr));
-}
-
-/**
  * Represent bytes in human readable format
  *
  * @param {number} bytes File size in bytes
@@ -280,12 +271,18 @@ function to_human_readable_size(bytes) {
 
 function select_input_type(name) {
   Object.keys(input_div).forEach((key) => {
-    input_div[key].collapse('hide');
-    inputs[key].prop('disabled', true);
+    if (key !== name) {
+      input_div[key].collapse('hide');
+      inputs[key].prop('disabled', true);
+    }
   });
   input_div[name].collapse('show');
   inputs[name].prop('disabled', false);
   inputs[name].prop('required', true);
+  const show_location = name === 'file' && $('#show_more_options_checkbox').prop('checked') && $('#location_input option').length > 0;
+  $('#location_input_div').collapse(show_location ? 'show' : 'hide');
+  $('#location_input').prop('disabled', !show_location);
+  $(document).trigger('storage-selection-change');
 }
 
 function PasteTypeStr(p) {
@@ -321,25 +318,92 @@ $(function () {
   let go_id = $('#go_paste_id');
   let view_btn = $('#view_info_button');
   let show_qrcode_checkbox = $('#show_qrcode_checkbox');
-  let pb_icon = $('#pb_icon');
-  let click_count = 0;
   let expiration_date_picker = $('#expiration_date_input');
+  let location_input = $('#location_input');
+  let show_more_options_checkbox = $('#show_more_options_checkbox');
+  let storages = null;
+  let storage_loading = null;
 
-  expiration_date_picker.datetimepicker({
-    uiLibrary: 'bootstrap5',
-    mode: '24hr',
-    format: 'yyyy-mm-dd HH:MM',
-    footer: true,
+  $('#advanced_settings_control').on('keydown', function (event) {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      this.click();
+    }
   });
 
-  pb_icon.on('click', function () {
-    if (click_count >= 3) {
-      $('.dev-mode').removeClass('d-none');
-      show_pop_alert('Activated developer settings!', 'alert-secondary');
-      setTimeout(() => remove_pop_alert(), 2000);
-    } else {
-      click_count++;
+  // Validate and cache only successful public storage lists for this browser session.
+  async function load_storages() {
+    if (storages) return storages;
+    if (storage_loading) return await storage_loading;
+    storage_loading = (async () => {
+      let storage_response = null;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          if (attempt === 0) {
+            const cached = sessionStorage.getItem(STORAGE_CACHE_KEY);
+            if (!cached) continue;
+            storage_response = JSON.parse(cached);
+          } else {
+            const response = await fetch(`${ENDPOINT}/v2/storage`);
+            if (!response.ok) throw new Error(`Storage request failed: ${response.status}`);
+            storage_response = await response.json();
+          }
+          const list = storage_response?.Storages;
+          if (!Array.isArray(list) || !list.some((entry) => entry.name === 'default') || !list.every((entry) =>
+            entry && typeof entry.name === 'string' && entry.name.length > 0 &&
+            Number.isSafeInteger(entry.max_file_size) && entry.max_file_size >= 0 &&
+            (entry.max_valid_ttl === undefined || (Number.isSafeInteger(entry.max_valid_ttl) && entry.max_valid_ttl > 0)) &&
+            (entry.protected === undefined || typeof entry.protected === 'boolean')
+          )) throw new Error('Invalid storage response');
+          if (attempt === 1) {
+            try {
+              sessionStorage.setItem(STORAGE_CACHE_KEY, JSON.stringify(storage_response));
+            } catch (_) {
+              // Session storage can be disabled without blocking the current upload.
+            }
+          }
+          break;
+        } catch (error) {
+          if (attempt === 1) {
+            console.warn('Unable to load storage limits', error);
+            return null;
+          }
+        }
+      }
+      storages = storage_response.Storages;
+      location_input.empty();
+      storages.forEach((storage) => {
+        location_input.append($('<option>').val(storage.name).text(storage.name));
+      });
+      location_input.val('default');
+      const show_location = $('#paste_type_file').prop('checked') && show_more_options_checkbox.prop('checked');
+      $('#location_input_div').collapse(show_location ? 'show' : 'hide');
+      location_input.prop('disabled', !show_location);
+      $(document).trigger('storage-selection-change');
+      return storages;
+    })();
+    try {
+      return await storage_loading;
+    } finally {
+      storage_loading = null;
     }
+  }
+
+  // The native picker receives local minute values; the submit handler enforces the exact limit.
+  function update_upload_limits() {
+    const location = location_input.prop('disabled') ? 'default' : location_input.val();
+    const storage = storages?.find((entry) => entry.name === location);
+    const now = new Date();
+    const maximum = new Date(now.getTime() + (storage?.max_valid_ttl ?? 2419200) * 1000);
+    expiration_date_picker.attr('min', new Date(now.getTime() + 60000 - now.getTimezoneOffset() * 60000).toISOString().slice(0, 16));
+    expiration_date_picker.attr('max', new Date(maximum.getTime() - maximum.getTimezoneOffset() * 60000).toISOString().slice(0, 16));
+    update_file_stats();
+  }
+
+  $(document).on('storage-selection-change', update_upload_limits);
+  show_more_options_checkbox.on('change', function () {
+    select_input_type($('input[name="paste-type"]:checked').val());
+    if (this.checked) void load_storages();
   });
 
   // Enable bootstrap tooltips
@@ -359,23 +423,21 @@ $(function () {
 
   function update_file_stats() {
     if (selected_file === undefined) {
-      file_stat.textContent = '0 bytes';
+      file_stat.text('0 bytes');
       return;
     }
-    let bytes = selected_file?.size ?? 0;
+    const bytes = selected_file.size;
     title.val(selected_file?.name || '');
     file_stat.text(`${selected_file?.type || 'application/octet-stream'}, ${to_human_readable_size(bytes)}`);
 
-    // Check length <= 10MB only when not default location
-    const form = $('#upload_form')[0];
-    let formdata = new FormData(form);
-    const location = formdata.get('location');
+    const location = location_input.prop('disabled') ? 'default' : location_input.val();
+    const storage = storages?.find((entry) => entry.name === location);
     inputs.file.removeClass('is-invalid');
     file_stat.removeClass('text-danger');
-    if ((!location || location === 'default') && bytes > 10485760) {
+    if (storage && bytes > storage.max_file_size) {
       inputs.file.addClass('is-invalid');
       file_stat.addClass('text-danger');
-      file_stat.text('The uploaded file is larger than the maximum file limit.');
+      file_stat.text(`The uploaded file is larger than the ${to_human_readable_size(storage.max_file_size)} limit.`);
     }
   }
 
@@ -384,9 +446,24 @@ $(function () {
     update_file_stats();
   });
 
-  $('#location_input').on('change', function () {
-    update_file_stats();
+  location_input.on('change', update_upload_limits);
+
+  // Accept the first dropped file and keep the native file input as the upload source.
+  $(document).on('dragover drop', function (event) {
+    const transfer = event.originalEvent.dataTransfer;
+    if (!transfer || !Array.from(transfer.types).includes('Files')) return;
+    event.preventDefault();
+    if (event.type !== 'drop' || transfer.files.length === 0) return;
+    const dropped = new DataTransfer();
+    dropped.items.add(transfer.files[0]);
+    inputs.file[0].files = dropped.files;
+    $('#paste_type_file').prop('checked', true);
+    select_input_type('file');
+    inputs.file.trigger('change');
   });
+
+  update_upload_limits();
+  void load_storages();
 
   inputs.text.on('input', function () {
     inputs.text.removeClass('is-invalid');
@@ -423,32 +500,40 @@ $(function () {
   });
 
   upload_button.on('click', async function () {
+    await load_storages();
     const form = $('#upload_form')[0];
     let formdata = new FormData(form);
     const type = formdata.get('paste-type');
     /** @type {File} */
     const content = formdata.get('u');
-    const location = formdata.get('location');
-    const expiration_date_val = formdata.get('expired_date');
+    const location = type === 'file' ? formdata.get('location') : null;
+    const expiration_date_val = formdata.get('expiration_date');
+    const storage_name = location || 'default';
+    const storage = storages?.find((entry) => entry.name === storage_name);
+    const now = Date.now();
+    let expired_at;
 
-    // Validate expiration date
+    // Check the actual selected storage at submit time; the picker only guides date entry.
     if (expiration_date_val) {
-      if (isDateValid(expiration_date_val)) {
+      expired_at = new Date(expiration_date_val).getTime();
+      if (!Number.isFinite(expired_at)) {
         show_pop_alert('Invalid expiration date', 'alert-danger');
         return false;
       }
-      const minDate = new Date();
-      const maxDate = new Date(minDate);
-      maxDate.setDate(maxDate.getDate() + 28);
-      const expiration = new Date(expiration_date_val);
-      if (expiration < minDate) {
-        show_pop_alert('Expiration date cannot be earier than the current time', 'alert-danger');
+      if (expired_at < now + 60000) {
+        show_pop_alert('Expiration date must be at least one minute from now', 'alert-danger');
         return false;
       }
-      if (expiration > maxDate) {
-        show_pop_alert('Expiration date cannot be later than 28 days after', 'alert-danger');
+      if (expired_at > now + (storage?.max_valid_ttl ?? 2419200) * 1000) {
+        show_pop_alert('Expiration date exceeds the selected storage limit', 'alert-danger');
         return false;
       }
+    }
+
+    if (type === 'file' && storage && content.size > storage.max_file_size) {
+      update_file_stats();
+      show_pop_alert(`The selected file exceeds the ${to_human_readable_size(storage.max_file_size)} limit.`, 'alert-danger');
+      return false;
     }
 
     inputs[type].trigger('input');
@@ -466,13 +551,12 @@ $(function () {
     upload_button.prop('disabled', true);
     upload_button.text('Waiting...');
 
-    // Hanlde large paste (> 10MB)
-    if (content.size > 10485760 || location) {
-      const file_hash = await get_file_hash(content, (offset, file_size) => {
-        upload_button.text(`Processing ... ${((offset / file_size) * 100).toFixed(0)}%`);
-      });
-
+    // Use the direct upload path for large files, explicit locations, or file expiry.
+    if (type === 'file' && (content.size > 10485760 || location || expired_at)) {
       try {
+        const file_hash = await get_file_hash(content, (offset, file_size) => {
+          upload_button.text(`Processing ... ${((offset / file_size) * 100).toFixed(0)}%`);
+        });
         // Retrieve presigned URL for upload large paste
         const res = await fetch(`${ENDPOINT}/v2/create`, {
           method: 'POST',
@@ -485,11 +569,11 @@ $(function () {
             file_size: content.size,
             file_hash: file_hash,
             password: formdata.get('auth-key') || undefined,
-            max_access_n: formdata.get('read-limit') || undefined,
+            max_access_n: formdata.get('read-limit') ? Number(formdata.get('read-limit')) : undefined,
             location: location || undefined,
-            expired_at: expiration_date_val ? new Date(expiration_date_val) : undefined,
+            expired_at,
           }),
-        }).catch();
+        });
 
         if (!res.ok) {
           const error = await res.json();
@@ -548,6 +632,7 @@ $(function () {
       });
       // Request JSON response
       filtered.set('json', '1');
+      if (expired_at) filtered.set('expired_at', String(expired_at));
       try {
         const res = await fetch(`${ENDPOINT}/`, {
           method: 'POST',

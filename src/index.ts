@@ -29,17 +29,41 @@ import Config from './config';
 // In favour of new cors() in itty-router v5
 const { preflight, corsify } = cors({
   origin: (origin) => {
-    const allowed = Config.get()
-      .config()
-      .cors_domain?.some((domain) => {
-        if (origin === domain || (domain.startsWith('*.') && origin?.endsWith(domain.slice(1))) || domain === '*')
-          return true;
-      });
+    if (!origin || !/^https?:\/\/[^/?#@\s]+$/.test(origin)) return undefined;
+    let requested_origin: URL;
+    try {
+      requested_origin = new URL(origin);
+    } catch {
+      return undefined;
+    }
+    if (requested_origin.username || requested_origin.password) return undefined;
+
+    // Match host boundaries for subdomains and compare scheme and host for any-port entries.
+    const allowed = Config.get().config().cors_domain?.some((domain) => {
+      if (domain === '*' || domain === origin) return true;
+      if (domain.startsWith('*.') && !domain.slice(2).includes('*')) {
+        return requested_origin.hostname.endsWith(`.${domain.slice(2)}`);
+      }
+      if (domain.endsWith(':*') && !domain.slice(0, -2).includes('*')) {
+        const base = domain.slice(0, -2);
+        if (!/^https?:\/\/[^/?#@\s]+$/.test(base)) return false;
+        try {
+          const configured_origin = new URL(base);
+          return !configured_origin.username && !configured_origin.password &&
+            requested_origin.protocol === configured_origin.protocol &&
+            requested_origin.hostname === configured_origin.hostname;
+        } catch {
+          return false;
+        }
+      }
+      return false;
+    });
     return allowed ? origin : undefined;
   },
   credentials: true,
   allowMethods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
-  allowHeaders: ['x-amz-checksum-sha256'],
+  allowHeaders: ['x-amz-checksum-sha256', 'authorization'],
+  maxAge: 14400
 });
 
 const router = Router<ERequest, [Env, ExecutionContext]>({
@@ -58,14 +82,15 @@ const router = Router<ERequest, [Env, ExecutionContext]>({
   ],
   catch: error,
   finally: [
-    (res: Response) => {
+    (res: Response, req: ERequest) => {
       if (res.headers.has('server')) return res;
       return corsify(
         new Response(res.body, {
           status: res.status,
           statusText: res.statusText,
           headers: new Headers(res.headers),
-        })
+        }),
+        req
       );
     },
   ],
@@ -120,7 +145,7 @@ router.get('/static/*', (request, env, ctx) => {
   return serve_static(frontend_url + path, request.headers);
 });
 
-// Create new paste (10MB limit)
+// Create a paste in default storage.
 router.post('/', async (request, env, ctx) => {
   const { headers } = request;
   const uuid = gen_id();
@@ -135,6 +160,7 @@ router.post('/', async (request, env, ctx) => {
   let need_qrcode: boolean = false;
   let paste_type: string | undefined;
   let reply_json: boolean = false;
+  let requested_expiry: string | File | null = null;
   // Content-Type: multipart/form-data
   if (content_type.includes('multipart/form-data')) {
     const formdata = await request.formData();
@@ -142,6 +168,7 @@ router.post('/', async (request, env, ctx) => {
     const type = formdata.get('paste-type');
     const file_title = formdata.get('title');
     const file_meta = formdata.get('mime-type');
+    requested_expiry = formdata.get('expired_at');
     if (data === null) {
       return new Response('Invalid request.\n', {
         status: 422,
@@ -246,10 +273,23 @@ router.post('/', async (request, env, ctx) => {
     });
   }
 
-  // Check request.body size <= 10MB
+  // Reject invalid expiry before writing an object so form uploads honor default storage limits.
+  const request_time = Date.now();
+  let expiration = request_time + 604800 * 1000;
+  if (requested_expiry !== null) {
+    if (typeof requested_expiry !== 'string' || !/^\d+$/.test(requested_expiry) || !Number.isSafeInteger(Number(requested_expiry))) {
+      return new Response('Invalid expired_at field.\n', { status: 422 });
+    }
+    expiration = Number(requested_expiry);
+    if (expiration < request_time + 60000 || expiration > request_time + (storage.max_valid_ttl ?? 2419200) * 1000) {
+      return new Response('Expiration date is outside the allowed storage range.\n', { status: 422 });
+    }
+  }
+
+  // Enforce default storage's configured size limit.
   const size = buffer.byteLength;
   if (size > storage.max_file_size) {
-    return new Response(`Paste size must be under ${to_human_readable_size(storage.max_file_size)}.\n`, {
+    return new Response(`Paste size must be under ${storage.max_file_size} bytes.\n`, {
       status: 422,
     });
   }
@@ -295,9 +335,7 @@ router.post('/', async (request, env, ctx) => {
 
   if (res.$metadata.httpStatusCode === 200) {
     // Upload success
-    const current_time = Date.now();
-    // Temporary expiration time
-    const expiration = new Date(Date.now() + 604800 * 1000).getTime(); // default 28 days
+    const current_time = request_time;
     const descriptor: PasteIndexEntry = {
       uuid,
       title: title || undefined,
@@ -311,8 +349,7 @@ router.post('/', async (request, env, ctx) => {
       expired_at: expiration,
     };
 
-    // Key will be expired after 28 day if unmodified
-    ctx.waitUntil(env.PASTE_INDEX.put(uuid, JSON.stringify(descriptor), { expirationTtl: 604800 }));
+    ctx.waitUntil(env.PASTE_INDEX.put(uuid, JSON.stringify(descriptor), { expirationTtl: Math.ceil((expiration - Date.now()) / 1000) }));
     return await get_paste_info(uuid, descriptor, request.is_browser, need_qrcode, reply_json);
   } else {
     return new Response('Unable to upload the paste.\n', {
@@ -342,6 +379,11 @@ router.get('/:uuid/:option?', async (request, env, ctx) => {
     });
   }
   const descriptor: PasteIndexEntry = JSON.parse(val);
+
+  if (descriptor.expired_at <= Date.now()) {
+    ctx.waitUntil(env.PASTE_INDEX.delete(uuid));
+    return new Response('Paste expired.\n', { status: 410 });
+  }
 
   // Handling /<uuid>/settings
   if (option === 'settings') {
@@ -403,11 +445,9 @@ router.get('/:uuid/:option?', async (request, env, ctx) => {
 
       // Accumlate access counter
       descriptor.access_n++;
-      ctx.waitUntil(
-        env.PASTE_INDEX.put(uuid, JSON.stringify(descriptor), {
-          expirationTtl: descriptor.expired_at / 1000,
-        })
-      );
+      if (descriptor.expired_at - Date.now() >= 60000) {
+        ctx.waitUntil(env.PASTE_INDEX.put(uuid, JSON.stringify(descriptor), { expiration: Math.ceil(descriptor.expired_at / 1000) }));
+      }
 
       return new Response(null, {
         status: 301,
@@ -530,11 +570,9 @@ router.get('/:uuid/:option?', async (request, env, ctx) => {
 
     // Accumlate access counter
     descriptor.access_n++;
-    ctx.waitUntil(
-      env.PASTE_INDEX.put(uuid, JSON.stringify(descriptor), {
-        expirationTtl: descriptor.expired_at / 1000,
-      })
-    );
+    if (descriptor.expired_at - Date.now() >= 60000) {
+      ctx.waitUntil(env.PASTE_INDEX.put(uuid, JSON.stringify(descriptor), { expiration: Math.ceil(descriptor.expired_at / 1000) }));
+    }
 
     return res;
   }
@@ -555,11 +593,9 @@ router.get('/:uuid/:option?', async (request, env, ctx) => {
 
   // Accumlate access counter
   descriptor.access_n++;
-  ctx.waitUntil(
-    env.PASTE_INDEX.put(uuid, JSON.stringify(descriptor), {
-      expirationTtl: descriptor.expired_at / 1000,
-    })
-  );
+  if (descriptor.expired_at - Date.now() >= 60000) {
+    ctx.waitUntil(env.PASTE_INDEX.put(uuid, JSON.stringify(descriptor), { expiration: Math.ceil(descriptor.expired_at / 1000) }));
+  }
 
   return nres;
 });
@@ -641,15 +677,11 @@ router.all('*', () => {
   return new Response('Invalid path.\n', {
     status: 403,
   });
-});
+})
 
 export default {
   fetch: (req: ERequest, env: Env, ctx: ExecutionContext) =>
     router
       // Update with itty-router 5.x
       .fetch(req, env, ctx),
-};
-function to_human_readable_size(max_file_size: number) {
-  throw new Error('Function not implemented.');
 }
-

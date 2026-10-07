@@ -192,3 +192,6 @@ dist
 
 # wrangler
 .wrangler
+
+# Report
+reports
