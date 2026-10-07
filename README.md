@@ -96,7 +96,7 @@ export interface ConfigParams {
   // Here I use my github repository as static file host
   "frontend_url": "https://raw.githubusercontent.com/rikkaneko/paste/main/frontend",
   // Subdomains or a specific origin with any port
-  "cors_domain": ["*.nekoid.cc", "http://127.0.0.1:*"],
+  "cors_domain": ["https://*.nekoid.cc", "http://127.0.0.1:*"],
   "storages": [
     {
       "name": "default",
@@ -119,7 +119,7 @@ export interface ConfigParams {
 }
 ```
 
-`cors_domain` accepts exact origins (including scheme and port), `*`, subdomain patterns such as `*.nekoid.cc`, and any-port patterns such as `http://127.0.0.1:*`. A subdomain pattern includes child hosts but not the base domain. An any-port pattern keeps the scheme and host fixed and also accepts the default port.
+Each `cors_domain` entry must start with `http://` or `https://`, except bare `*`, which allows any Origin. It accepts exact origins (including scheme and port), subdomain patterns such as `https://*.nekoid.cc`, and any-port patterns such as `http://127.0.0.1:*`. A subdomain pattern includes child hosts but not the base domain and matches only the configured scheme. An any-port pattern keeps the scheme and host fixed and also accepts the default port.
 
 Note that `default` storage is mandatory for the normal operation for this service.
 

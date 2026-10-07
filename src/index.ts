@@ -29,7 +29,10 @@ import Config from './config';
 // In favour of new cors() in itty-router v5
 const { preflight, corsify } = cors({
   origin: (origin) => {
-    if (!origin || !/^https?:\/\/[^/?#@\s]+$/.test(origin)) return undefined;
+    if (!origin) return undefined;
+    const domains = Config.get().config().cors_domain;
+    if (domains?.includes('*')) return origin;
+    if (!/^https?:\/\/[^/?#@\s]+$/.test(origin)) return undefined;
     let requested_origin: URL;
     try {
       requested_origin = new URL(origin);
@@ -39,10 +42,12 @@ const { preflight, corsify } = cors({
     if (requested_origin.username || requested_origin.password) return undefined;
 
     // Match host boundaries for subdomains and compare scheme and host for any-port entries.
-    const allowed = Config.get().config().cors_domain?.some((domain) => {
-      if (domain === '*' || domain === origin) return true;
-      if (domain.startsWith('*.') && !domain.slice(2).includes('*')) {
-        return requested_origin.hostname.endsWith(`.${domain.slice(2)}`);
+    const allowed = domains?.some((domain) => {
+      if (!/^https?:\/\//.test(domain)) return false;
+      if (domain === origin) return true;
+      if (/^https?:\/\/\*\.[^/?#@:\s*]+$/.test(domain)) {
+        const [scheme, hostname] = domain.split('://*.');
+        return requested_origin.protocol === `${scheme}:` && requested_origin.hostname.endsWith(`.${hostname}`);
       }
       if (domain.endsWith(':*') && !domain.slice(0, -2).includes('*')) {
         const base = domain.slice(0, -2);
@@ -61,8 +66,8 @@ const { preflight, corsify } = cors({
     return allowed ? origin : undefined;
   },
   credentials: true,
-  allowMethods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
-  allowHeaders: ['x-amz-checksum-sha256', 'authorization'],
+  allowMethods: ['*'],
+  allowHeaders: ['x-amz-checksum-sha256', 'authorization', 'content-type'],
   maxAge: 14400
 });
 

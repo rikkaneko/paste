@@ -188,11 +188,14 @@ test('An expired descriptor returns 410 even if KV has not evicted it yet', asyn
 
 test('CORS patterns match only allowed web origins on simple and preflight requests', async () => {
   const cases = [
-    { domains: ['*.nekoid.cc'], origin: 'https://app.nekoid.cc', allowed: true },
-    { domains: ['*.nekoid.cc'], origin: 'https://deep.app.nekoid.cc:8443', allowed: true },
-    { domains: ['*.nekoid.cc'], origin: 'https://nekoid.cc', allowed: false },
-    { domains: ['*.nekoid.cc'], origin: 'https://badnekoid.cc', allowed: false },
-    { domains: ['*.nekoid.cc'], origin: 'https://app.nekoid.cc.evil.test', allowed: false },
+    { domains: ['https://*.nekoid.cc'], origin: 'https://app.nekoid.cc', allowed: true },
+    { domains: ['https://*.nekoid.cc'], origin: 'https://deep.app.nekoid.cc:8443', allowed: true },
+    { domains: ['https://*.nekoid.cc'], origin: 'http://app.nekoid.cc', allowed: false },
+    { domains: ['https://*.nekoid.cc'], origin: 'https://nekoid.cc', allowed: false },
+    { domains: ['https://*.nekoid.cc'], origin: 'https://badnekoid.cc', allowed: false },
+    { domains: ['https://*.nekoid.cc'], origin: 'https://app.nekoid.cc.evil.test', allowed: false },
+    { domains: ['http://*.nekoid.cc'], origin: 'http://app.nekoid.cc', allowed: true },
+    { domains: ['*.nekoid.cc'], origin: 'https://app.nekoid.cc', allowed: false },
     { domains: ['http://127.0.0.1:*'], origin: 'http://127.0.0.1', allowed: true },
     { domains: ['http://127.0.0.1:*'], origin: 'http://127.0.0.1:3000', allowed: true },
     { domains: ['http://127.0.0.1:*'], origin: 'http://127.0.0.1:80', allowed: true },
@@ -204,7 +207,8 @@ test('CORS patterns match only allowed web origins on simple and preflight reque
     { domains: ['https://app.nekoid.cc:444'], origin: 'https://app.nekoid.cc:444', allowed: true },
     { domains: ['https://app.nekoid.cc:444'], origin: 'https://app.nekoid.cc:445', allowed: false },
     { domains: ['*'], origin: 'https://other.test:9000', allowed: true },
-    { domains: ['*'], origin: 'null', allowed: false },
+    { domains: ['*'], origin: 'http://127.0.0.1:3000', allowed: true },
+    { domains: ['*'], origin: 'null', allowed: true },
   ];
 
   for (const { domains, origin, allowed } of cases) {
@@ -222,5 +226,36 @@ test('CORS patterns match only allowed web origins on simple and preflight reque
   for (const method of ['GET', 'OPTIONS']) {
     const response = await app.fetch(new Request('https://pb.example.test/no-such-paste', { method }), env, ctx);
     assert.equal(response.headers.get('access-control-allow-origin'), null, `${method} without Origin`);
+  }
+});
+
+test('CORS config entries require an HTTP or HTTPS scheme except for bare star', () => {
+  const forgjs = require('@cesium133/forgjs');
+  Module._load = function (request, parent, isMain) {
+    if (request === '@cesium133/forgjs') return forgjs;
+    return originalLoad(request, parent, isMain);
+  };
+  let ConfigParamsValidator;
+  try {
+    ({ ConfigParamsValidator } = require(join(outputDir, 'v2/schema.js')));
+  } finally {
+    Module._load = originalLoad;
+  }
+  const config = {
+    config_auth_token: 'test-token',
+    auth_v2_endpoint: 'https://auth.example.test',
+    uuid_length: 4,
+    public_url: 'https://pb.example.test',
+    storages: [{
+      name: 'default', endpoint: 'https://s3.example.test', bucket_name: 'bucket',
+      access_key_id: 'key', secret_access_key: 'secret', max_file_size: 100,
+    }],
+  };
+
+  for (const domain of ['*', 'https://*.nekoid.cc', 'http://127.0.0.1:*', 'https://app.nekoid.cc']) {
+    assert.equal(ConfigParamsValidator.test({ ...config, cors_domain: [domain] }), true, domain);
+  }
+  for (const domain of ['*.nekoid.cc', 'ftp://app.nekoid.cc']) {
+    assert.equal(ConfigParamsValidator.test({ ...config, cors_domain: [domain] }), false, domain);
   }
 });

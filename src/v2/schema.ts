@@ -136,7 +136,7 @@ export interface ConfigParams {
   public_url: string;
   // Base path to frontend assets
   frontend_url?: string;
-  // Allowed CORS domains
+  // Allowed CORS origins and domain patterns with an HTTP or HTTPS scheme, or * for any origin
   cors_domain?: string[];
   // Storage configurations
   storages: StorageConfigParams[];
@@ -168,7 +168,7 @@ const config_rules = {
   frontend_url: new Rule({ type: 'url', optional: true }),
   cors_domain: new Rule({
     type: 'array',
-    of: new Rule({ type: 'string', notEmpty: true }),
+    of: new Rule({ type: 'string', notEmpty: true, custom: (val: string) => val === '*' || /^https?:\/\//.test(val) }),
     optional: true,
   }),
   storages: new Rule({
